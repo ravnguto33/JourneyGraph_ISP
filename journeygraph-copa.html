@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JourneyGraph · Copa do Mundo 2026 · CDRView ao Vivo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+/* ── TOKENS ──────────────────────────────────────── */
+:root {
+  --pitch:     #071510;
+  --surface:   #0C1F14;
+  --panel:     #0F2519;
+  --border:    #1A3D24;
+  --gold:      #FFD700;
+  --gold-dim:  #A08800;
+  --green:     #00E57A;
+  --red:       #FF3D6B;
+  --blue:      #00C6FF;
+  --purple:    #B06DFF;
+  --orange:    #FF8C00;
+  --teal:      #00D4AA;
+  --text:      #E8F5E8;
+  --muted:     #5A8A6A;
+  --claro:     #E2001A;
+  --white:     #FFFFFF;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--pitch);
+  color: var(--text);
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── HERO PULSE BAR ──────────────────────────────── */
+.pulse-bar {
+  height: 48px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.pulse-bar canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  opacity: 0.7;
+}
+
+.pulse-overlay {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0 16px;
+  gap: 16px;
+}
+
+.match-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--claro);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+
+.match-score {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--gold);
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.match-teams {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.match-time {
+  font-size: 10px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.anomaly-live {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.anom-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.anom-chip .val {
+  font-weight: 800;
+  font-size: 12px;
+  margin-left: 2px;
+}
+
+.anom-chip .val.up   { color: var(--red); }
+.anom-chip .val.down { color: var(--green); }
+.anom-chip .val.neu  { color: var(--gold); }
+
+.live-dot {
+  width: 6px; height: 6px;
+  background: var(--red);
+  border-radius: 50%;
+  animation: blink 1s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+/* ── TOOLBAR ─────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.tb-label {
+  font-size: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.tb-btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.tb-btn:hover  { border-color: var(--gold); color: var(--gold); }
+.tb-btn.active { background: var(--gold); border-color: var(--gold); color: #000; }
+
+.tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
+
+select.tb-sel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  cursor: pointer;
+  outline: none;
+}
+
+/* ── MAIN ────────────────────────────────────────── */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── LEFT ────────────────────────────────────────── */
+.left {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.lsec {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lsec-title {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.region-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px 10px;
+  margin-bottom: 5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.region-card:hover   { border-color: var(--gold-dim); }
+.region-card.active  { border-color: var(--gold); background: #1A2D10; }
+
+.rc-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.rc-meta {
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.rc-anom {
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 3px;
+}
+.rc-anom.hi  { color: var(--red); }
+.rc-anom.med { color: var(--gold); }
+.rc-anom.lo  { color: var(--green); }
+
+.rg-legend { display: flex; flex-direction: column; gap: 3px; }
+.rg-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 2px 0;
+  font-size: 10px; color: var(--text);
+}
+.rg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.rg-delta {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 700;
+}
+.rg-delta.up   { color: var(--red); }
+.rg-delta.down { color: var(--green); }
+.rg-delta.neu  { color: var(--muted); }
+
+/* ── CENTER ──────────────────────────────────────── */
+.center {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--pitch);
+}
+
+.view { display: none; width: 100%; height: 100%; }
+.view.active { display: block; }
+
+/* graph label */
+.g-label {
+  font-size: 9px;
+  fill: var(--muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ── RIGHT ───────────────────────────────────────── */
+.right {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rtabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.rtab {
+  flex: 1;
+  padding: 7px 4px;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+}
+.rtab:hover { color: var(--text); }
+.rtab.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+.rcontent { flex: 1; overflow-y: auto; padding: 10px 12px; }
+
+/* insight cards */
+.icard {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+  border-left: 3px solid var(--gold);
+}
+.icard.red    { border-left-color: var(--red); }
+.icard.green  { border-left-color: var(--green); }
+.icard.blue   { border-left-color: var(--blue); }
+.icard.purple { border-left-color: var(--purple); }
+
+.ic-label {
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.ic-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+  margin-bottom: 4px;
+}
+.ic-body {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.ic-body strong { color: var(--text); }
+
+/* timeline */
+.tl-wrap { overflow-x: hidden; }
+.tl-hours {
+  display: flex; margin-left: 56px; margin-bottom: 3px;
+  font-size: 8px; color: var(--muted);
+}
+.tl-row {
+  display: flex; align-items: center;
+  margin-bottom: 4px; height: 18px;
+}
+.tl-lbl {
+  width: 52px; font-size: 9px; color: var(--muted);
+  flex-shrink: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.tl-track {
+  flex: 1; position: relative; height: 12px;
+  background: var(--panel); border-radius: 2px; overflow: hidden;
+}
+.tl-seg {
+  position: absolute; top: 0; height: 100%;
+  border-radius: 2px; opacity: 0.85;
+  transition: opacity 0.2s; cursor: pointer;
+}
+.tl-seg.anomaly { opacity: 1; box-shadow: 0 0 6px currentColor; }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* tooltip */
+#tt {
+  position: fixed;
+  background: #0C1F14EE;
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 10px;
+  color: var(--text);
+  pointer-events: none;
+  z-index: 999;
+  max-width: 190px;
+  display: none;
+  line-height: 1.6;
+  backdrop-filter: blur(8px);
+}
+#tt .tt-t { font-size: 11px; font-weight: 700; margin-bottom: 3px; color: var(--gold); }
+
+/* delta badge on edges */
+.delta-badge {
+  font-size: 8px;
+  font-weight: 800;
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+
+<!-- ── HERO PULSE BAR ─────────────────────────────────────────────────────── -->
+<div class="pulse-bar">
+  <canvas id="pulse-canvas"></canvas>
+  <div class="pulse-overlay">
+    <div class="match-badge">
+      <div class="live-dot"></div>
+      AO VIVO
+    </div>
+    <div class="match-teams" id="teams-label">🇧🇷 Brasil × Argentina 🇦🇷</div>
+    <div class="match-score" id="score-label">2 — 1</div>
+    <div class="match-time" id="time-label">73' · Quartas de Final · Copa do Mundo 2026</div>
+    <div class="anomaly-live">
+      <div class="anom-chip">Streaming<span class="val up" id="chip-stream">+187%</span></div>
+      <div class="anom-chip">Gaming<span class="val down" id="chip-gaming">−64%</span></div>
+      <div class="anom-chip">Social<span class="val up" id="chip-social">+142%</span></div>
+      <div class="anom-chip">Work<span class="val down" id="chip-work">−78%</span></div>
+      <div class="anom-chip">Anomalia<span class="val neu" id="chip-sigma">4.2σ</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOOLBAR ────────────────────────────────────────────────────────────── -->
+<div class="toolbar">
+  <span class="tb-label">Visão:</span>
+  <button class="tb-btn active" onclick="setView('graph',this)">Dígrafo Δ</button>
+  <button class="tb-btn" onclick="setView('overlay',this)">Sobreposição</button>
+  <button class="tb-btn" onclick="setView('timeline',this)">Timeline</button>
+  <button class="tb-btn" onclick="setView('anomaly',this)">Série Anomalia</button>
+  <div class="tb-sep"></div>
+  <span class="tb-label">Região:</span>
+  <select class="tb-sel" id="region-sel" onchange="selectRegion(this.value)">
+    <option value="0">São Paulo — Capital</option>
+    <option value="1">Rio de Janeiro</option>
+    <option value="2">Brasília / DF</option>
+    <option value="3">Nordeste</option>
+    <option value="4">Sul</option>
+  </select>
+  <div class="tb-sep"></div>
+  <span class="tb-label">Momento:</span>
+  <button class="tb-btn" onclick="setMoment('pre')">Pré-jogo</button>
+  <button class="tb-btn active" id="btn-live" onclick="setMoment('live')">🔴 Ao vivo</button>
+  <button class="tb-btn" onclick="setMoment('post')">Pós-gol</button>
+  <button class="tb-btn" onclick="setMoment('base')">Baseline (sem Copa)</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="sim-btn" onclick="toggleSim()" style="border-color:var(--gold);color:var(--gold)">⏵ Simular jogo</button>
+</div>
+
+<!-- ── MAIN ──────────────────────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- LEFT -->
+  <div class="left">
+    <div class="lsec">
+      <div class="lsec-title">Regiões</div>
+      <div id="region-list"></div>
+    </div>
+    <div class="lsec">
+      <div class="lsec-title">Rating Groups — Δ vs. Baseline</div>
+      <div class="rg-legend" id="rg-legend"></div>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="center" id="center">
+    <div class="view active" id="view-graph">
+      <svg id="graph-svg" style="width:100%;height:100%"></svg>
+    </div>
+    <div class="view" id="view-overlay">
+      <svg id="overlay-svg" style="width:100%;height:100%"></svg>
+    </div>
+    <div class="view" id="view-timeline" style="padding:14px;overflow-y:auto;">
+      <div style="font-size:10px;color:var(--muted);margin-bottom:10px">
+        Atividade por Rating Group — dia do jogo vs. baseline (linha cinza) · Região selecionada
+      </div>
+      <div id="tl-wrap"></div>
+    </div>
+    <div class="view" id="view-anomaly">
+      <svg id="anom-svg" style="width:100%;height:100%"></svg>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="right">
+    <div class="rtabs">
+      <div class="rtab active" onclick="setRTab(this,'insights')">Insights</div>
+      <div class="rtab" onclick="setRTab(this,'data')">Dados RG</div>
+      <div class="rtab" onclick="setRTab(this,'qos')">QoS/Rede</div>
+    </div>
+    <div class="rcontent" id="rcontent"></div>
+  </div>
+
+</div>
+<div id="tt"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// DATASET SINTÉTICO — CDRView agregado por RG × Região × Momento
+// Calibrado para Copa do Mundo Brasil × Argentina, 73'
+// Unidade: GB/hora agregado na célula/região (não por assinante)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const RG = [
+  { id:'RG01', label:'Streaming\nVídeo',  s:'Video',   color:'#FF6B6B', rgt:1  },
+  { id:'RG02', label:'Redes\nSociais',    s:'Social',  color:'#4ECDC4', rgt:2  },
+  { id:'RG03', label:'Gaming\nUDP',       s:'Gaming',  color:'#9B6DFF', rgt:3  },
+  { id:'RG04', label:'Video\nConf.',      s:'VConf',   color:'#00C6FF', rgt:4  },
+  { id:'RG05', label:'Work\nCloud',       s:'Work',    color:'#00E57A', rgt:5  },
+  { id:'RG06', label:'Música\nÁudio',     s:'Music',   color:'#FFD700', rgt:6  },
+  { id:'RG07', label:'Maps\nNav.',        s:'Maps',    color:'#FF8C00', rgt:7  },
+  { id:'RG08', label:'News\nPortais',     s:'News',    color:'#A8C4D4', rgt:8  },
+  { id:'RG09', label:'Mensag.\nEmail',    s:'Msg',     color:'#7FBA00', rgt:9  },
+  { id:'RG10', label:'Outros\nDados',     s:'Outros',  color:'#3A5A4A', rgt:10 },
+];
+
+// Momento: volumes agregados por RG (GB/h por região — índice)
+// base: semana sem Copa; pre: 1h antes; live: durante jogo; post: pós-gol; goal: imediato após gol
+const MOMENTS = {
+  base: [42, 28, 18, 12, 15, 8, 10, 6, 9, 5],   // baseline normal
+  pre:  [68, 45, 10, 8,  9,  12, 14, 18, 11, 4], // frenesi pré-jogo
+  live: [195,148, 6,  3,  2,  22, 8,  52, 31, 3], // jogo rolando
+  post: [220,198, 5,  2,  2,  18, 7,  88, 62, 3], // pós-gol Brasil
+  goal: [85, 310, 8,  4,  3,  15, 9, 120, 95, 4], // 5 min após gol — social explode
+};
+
+// Regiões — cada uma tem um multiplicador de anomalia diferente
+const REGIONS = [
+  { name:'São Paulo Capital', cells:1840, mult:[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0], anomaly:4.2 },
+  { name:'Rio de Janeiro',    cells:1120, mult:[1.1,1.2,0.9,0.9,0.9,1.1,0.9,1.0,1.0,1.0], anomaly:4.8 },
+  { name:'Brasília / DF',     cells:380,  mult:[0.9,0.9,1.0,1.2,1.3,0.9,1.0,0.9,0.9,1.0], anomaly:3.1 },
+  { name:'Nordeste',          cells:920,  mult:[1.2,1.3,0.8,0.8,0.7,1.2,1.1,1.1,1.0,0.9], anomaly:5.1 },
+  { name:'Sul',               cells:660,  mult:[0.95,1.0,1.1,1.0,1.0,1.0,1.0,1.0,1.0,1.0],anomaly:3.7 },
+];
+
+// Transições de jornada por momento (arestas do dígrafo)
+// [src, dst, peso_base, peso_live] — peso em frequência de transição/hora
+const EDGES_BY_MOMENT = {
+  base: [
+    [0,1,18,0],[1,0,14,0],[1,5,8,0],[5,1,6,0],[0,5,9,0],
+    [4,3,10,0],[3,4,8,0],[2,0,6,0],[0,2,5,0],[6,0,4,0],
+    [1,7,6,0],[7,1,5,0],[8,3,4,0],[3,8,3,0],[1,8,5,0],
+  ],
+  pre: [
+    [0,1,32,0],[1,0,28,0],[1,7,18,0],[7,1,14,0],
+    [0,7,8,0],[1,8,22,0],[8,1,18,0],[0,8,10,0],
+    [1,5,6,0],[5,1,5,0],[6,0,5,0],[1,6,4,0],
+  ],
+  live: [
+    [0,1,55,0],[1,0,48,0],[0,7,6,0],[7,0,5,0],
+    [1,8,38,0],[8,1,32,0],[0,8,22,0],[8,0,18,0],
+    [1,5,28,0],[5,1,24,0],[0,5,18,0],[5,0,15,0],
+    // concomitância Video‖Social durante jogo (tracejado dourado)
+    [0,1,40,1],[1,0,35,1],
+  ],
+  post: [
+    [0,1,62,0],[1,0,58,0],[1,8,55,0],[8,1,48,0],
+    [0,8,40,0],[8,0,35,0],[1,5,32,0],[5,1,28,0],
+    [0,5,22,0],[1,7,12,0],[7,1,10,0],
+    [0,1,50,1],[1,0,45,1],[1,8,40,1],
+  ],
+  goal: [
+    [1,8,88,0],[8,1,75,0],[1,5,65,0],[5,1,58,0],
+    [0,1,45,0],[1,0,40,0],[0,8,35,0],[8,0,30,0],
+    [1,7,18,0],[7,1,15,0],[1,5,50,1],[8,1,45,1],
+  ],
+};
+
+// Timeline por hora (0–23) para cada RG — copa vs baseline
+function genTimeline(moment) {
+  const base = MOMENTS.base;
+  const live = MOMENTS[moment];
+  return RG.map((rg, i) => {
+    return Array.from({length:24}, (_, h) => {
+      // baseline com padrão humano natural
+      const baseH = base[i] * (h >= 18 && h <= 22 ? 1.4 :
+                                h >= 8  && h <= 12 ? 1.1 :
+                                h >= 0  && h <= 5  ? 0.3 : 0.8);
+      // copa: pico no horário do jogo (20h–22h)
+      let liveH = live[i] * (h >= 18 && h <= 22 ? 1.6 :
+                              h >= 14 && h <= 17 ? 1.2 :
+                              h >= 0  && h <= 5  ? 0.25 : 0.7);
+      if (moment === 'base') liveH = baseH;
+      return { h, base: baseH, live: liveH };
+    });
+  });
+}
+
+// Série temporal de anomalia (sigma) por hora para o dia do jogo
+const ANOMALY_SERIES = [
+  {h:0, sigma:0.2},{h:4, sigma:0.1},{h:8, sigma:0.4},
+  {h:12,sigma:0.8},{h:14,sigma:1.2},{h:16,sigma:1.8},
+  {h:18,sigma:2.4},{h:19,sigma:3.1},{h:20,sigma:3.8},
+  {h:21,sigma:4.2},{h:22,sigma:4.9},{h:23,sigma:3.2},
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════════════
+let curRegion = 0;
+let curMoment = 'live';
+let curView   = 'graph';
+let curRTab   = 'insights';
+let simRunning = false;
+let simPhase   = 0;
+let simTimer   = null;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════════════
+function init() {
+  renderPulseBar();
+  renderRegionList();
+  renderRGLegend();
+  renderGraph();
+  renderRight();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PULSE BAR CANVAS
+// ═══════════════════════════════════════════════════════════════════════════
+function renderPulseBar() {
+  const canvas = document.getElementById('pulse-canvas');
+  const W = canvas.parentElement.offsetWidth;
+  const H = 48;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const pts = ANOMALY_SERIES;
+  const maxS = 5;
+  const grad = ctx.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0,   '#071510');
+  grad.addColorStop(0.6, '#0A1A0E');
+  grad.addColorStop(0.85,'#1A0A0A');
+  grad.addColorStop(1,   '#2A0808');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.beginPath();
+  pts.forEach((p, i) => {
+    const x = (p.h / 23) * W;
+    const y = H - (p.sigma / maxS) * H * 0.85 - 2;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#FF3D6B88';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // fill under
+  ctx.lineTo(W, H); ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.fillStyle = '#FF3D6B18';
+  ctx.fill();
+
+  // current position marker (73' ≈ hora 21)
+  const cx = (21 / 23) * W;
+  ctx.beginPath();
+  ctx.moveTo(cx, 0); ctx.lineTo(cx, H);
+  ctx.strokeStyle = '#FF3D6B';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([3, 3]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REGION LIST
+// ═══════════════════════════════════════════════════════════════════════════
+function renderRegionList() {
+  const el = document.getElementById('region-list');
+  el.innerHTML = REGIONS.map((r, i) => {
+    const cls = r.anomaly >= 4.5 ? 'hi' : r.anomaly >= 3.5 ? 'med' : 'lo';
+    return `<div class="region-card ${i===curRegion?'active':''}" onclick="selectRegion(${i})">
+      <div class="rc-name">${r.name}</div>
+      <div class="rc-meta">${r.cells.toLocaleString()} células · CDRView</div>
+      <div class="rc-anom ${cls}">Anomalia ${r.anomaly}σ</div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RG LEGEND
+// ═══════════════════════════════════════════════════════════════════════════
+function renderRGLegend() {
+  const el  = document.getElementById('rg-legend');
+  const reg = REGIONS[curRegion];
+  const base = MOMENTS.base;
+  const live = MOMENTS[curMoment];
+  el.innerHTML = RG.map((rg, i) => {
+    const b = base[i] * reg.mult[i];
+    const l = live[i] * reg.mult[i];
+    const pct = Math.round(((l - b) / b) * 100);
+    const cls = pct > 10 ? 'up' : pct < -10 ? 'down' : 'neu';
+    const sign = pct > 0 ? '+' : '';
+    return `<div class="rg-row">
+      <div class="rg-dot" style="background:${rg.color}"></div>
+      <span>${rg.s}</span>
+      <span class="rg-delta ${cls}">${sign}${pct}%</span>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DÍGRAFO Δ — mostra diferença entre live e baseline
+// ═══════════════════════════════════════════════════════════════════════════
+function renderGraph() {
+  const svg  = d3.select('#graph-svg');
+  svg.selectAll('*').remove();
+  const W = document.getElementById('view-graph').clientWidth  || 700;
+  const H = document.getElementById('center').clientHeight     || 480;
+  svg.attr('viewBox', `0 0 ${W} ${H}`);
+
+  const reg  = REGIONS[curRegion];
+  const base = MOMENTS.base;
+  const live = MOMENTS[curMoment];
+  const edges = EDGES_BY_MOMENT[curMoment] || EDGES_BY_MOMENT.live;
+
+  // grid
+  const grd = svg.append('g');
+  d3.range(0,H,44).forEach(y => grd.append('line').attr('x1',0).attr('y1',y).attr('x2',W).attr('y2',y).attr('stroke','#0C1F14').attr('stroke-width',1));
+  d3.range(0,W,44).forEach(x => grd.append('line').attr('x1',x).attr('y1',0).attr('x2',x).attr('y2',H).attr('stroke','#0C1F14').attr('stroke-width',1));
+
+  // active nodes
+  const activeSet = new Set();
+  edges.forEach(e => { activeSet.add(e[0]); activeSet.add(e[1]); });
+  const liveVols = live.map((v, i) => v * reg.mult[i]);
+  const baseVols = base.map((v, i) => v * reg.mult[i]);
+  const maxLive = Math.max(...liveVols);
+
+  const nodes = RG.filter((_,i) => activeSet.has(i)).map(rg => {
+    const idx = RG.indexOf(rg);
+    const lv = liveVols[idx];
+    const bv = baseVols[idx];
+    const delta = (lv - bv) / bv;
+    return { ...rg, idx, lv, bv, delta };
+  });
+
+  const nodeMap = {};
+  nodes.forEach(n => nodeMap[n.idx] = n);
+
+  const links = edges.filter(e => nodeMap[e[0]] && nodeMap[e[1]]).map(e => ({
+    source: nodeMap[e[0]], target: nodeMap[e[1]],
+    w: e[2], concurrent: e[3] === 1, srcIdx: e[0],
+  }));
+
+  const maxW = d3.max(links, d => d.w) || 1;
+
+  // defs
+  const defs = svg.append('defs');
+  RG.forEach((rg, i) => {
+    defs.append('marker').attr('id',`arr-${i}`)
+      .attr('viewBox','0 -5 10 10').attr('refX',32).attr('refY',0)
+      .attr('markerWidth',5).attr('markerHeight',5).attr('orient','auto')
+      .append('path').attr('d','M0,-5L10,0L0,5').attr('fill',rg.color).attr('opacity',0.8);
+  });
+  defs.append('marker').attr('id','arr-conc')
+    .attr('viewBox','0 -5 10 10').attr('refX',32).attr('refY',0)
+    .attr('markerWidth',5).attr('markerHeight',5).attr('orient','auto')
+    .append('path').attr('d','M0,-5L10,0L0,5').attr('fill','#FFD700').attr('opacity',1);
+
+  const sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d=>d.idx).distance(150).strength(0.4))
+    .force('charge', d3.forceManyBody().strength(-350))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .force('collision', d3.forceCollide(55));
+
+  // edges
+  const edgeG = svg.append('g');
+  const edgePath = edgeG.selectAll('path').data(links).enter().append('path')
+    .attr('fill','none')
+    .attr('stroke', d => d.concurrent ? '#FFD700' : (nodeMap[d.srcIdx]?.color || '#fff'))
+    .attr('stroke-width', d => 0.8 + (d.w / maxW) * 5)
+    .attr('stroke-opacity', d => d.concurrent ? 0.9 : 0.6)
+    .attr('stroke-dasharray', d => d.concurrent ? '6,3' : 'none')
+    .attr('marker-end', d => d.concurrent ? 'url(#arr-conc)' : `url(#arr-${d.srcIdx})`)
+    .on('mouseover', (ev, d) => showTT(ev,
+      `<div class="tt-t">${RG[d.srcIdx].s} → ${d.target.s}</div>
+      Freq: ${d.w}×/h · ${d.concurrent ? '⚡ Concomitante' : 'Sequencial'}<br>
+      Peso relativo: ${Math.round(d.w/maxW*100)}%`))
+    .on('mousemove', moveTT).on('mouseout', hideTT);
+
+  // delta labels on edges
+  const edgeLabel = edgeG.selectAll('text.delta-badge').data(links).enter().append('text')
+    .attr('class','delta-badge').attr('text-anchor','middle').attr('dy','0.3em')
+    .attr('fill', d => {
+      const src = nodeMap[d.srcIdx];
+      if (!src) return '#fff';
+      const pct = Math.round(((src.lv - src.bv) / src.bv) * 100);
+      return pct > 20 ? '#FF3D6B' : pct < -20 ? '#00E57A' : '#FFD700';
+    })
+    .style('display', d => Math.abs(d.w / maxW) > 0.3 ? 'block' : 'none');
+
+  // nodes
+  const nodeG = svg.append('g');
+  const nodeEl = nodeG.selectAll('g').data(nodes).enter().append('g')
+    .attr('cursor','pointer')
+    .call(d3.drag()
+      .on('start',(ev,d)=>{ if(!ev.active) sim.alphaTarget(0.3).restart(); d.fx=d.x;d.fy=d.y; })
+      .on('drag', (ev,d)=>{ d.fx=ev.x;d.fy=ev.y; })
+      .on('end',  (ev,d)=>{ if(!ev.active) sim.alphaTarget(0);d.fx=null;d.fy=null; }))
+    .on('mouseover', (ev, d) => {
+      const pct = Math.round(d.delta * 100);
+      const sign = pct > 0 ? '+' : '';
+      showTT(ev, `<div class="tt-t">${d.s} (${d.id})</div>
+        Ao vivo: ${d.lv.toFixed(0)} GB/h<br>
+        Baseline: ${d.bv.toFixed(0)} GB/h<br>
+        Δ: <b>${sign}${pct}%</b><br>RGT: ${d.rgt}`);
+    })
+    .on('mousemove', moveTT).on('mouseout', hideTT);
+
+  // outer glow ring — anomaly indicator
+  nodeEl.append('circle')
+    .attr('r', d => 22 + (d.lv / maxLive) * 18)
+    .attr('fill','none')
+    .attr('stroke', d => d.delta > 0.5 ? '#FF3D6B' : d.delta < -0.3 ? '#00E57A' : d.color)
+    .attr('stroke-width', d => Math.abs(d.delta) > 0.3 ? 2 : 1)
+    .attr('stroke-opacity', d => Math.abs(d.delta) > 0.3 ? 0.8 : 0.3)
+    .attr('stroke-dasharray', d => Math.abs(d.delta) > 0.5 ? '3,2' : 'none');
+
+  nodeEl.append('circle')
+    .attr('r', d => 18 + (d.lv / maxLive) * 16)
+    .attr('fill', d => d.color + '22')
+    .attr('stroke', d => d.color)
+    .attr('stroke-width', 1.5);
+
+  nodeEl.append('circle')
+    .attr('r', d => 10 + (d.lv / maxLive) * 10)
+    .attr('fill', d => d.color + '55');
+
+  const lbl = nodeEl.append('text').attr('text-anchor','middle').attr('pointer-events','none');
+  lbl.append('tspan').text(d=>d.label.split('\n')[0])
+    .attr('x',0).attr('dy','-0.4em').attr('fill','#E8F5E8').attr('font-size','10px').attr('font-weight','700');
+  lbl.append('tspan').text(d=>d.label.split('\n')[1]||'')
+    .attr('x',0).attr('dy','1.1em').attr('fill','#E8F5E8').attr('font-size','10px').attr('font-weight','700');
+
+  // delta badge below node
+  nodeEl.append('text')
+    .attr('text-anchor','middle')
+    .attr('y', d => 28 + (d.lv/maxLive)*16)
+    .attr('font-size','9px').attr('font-weight','800').attr('pointer-events','none')
+    .attr('fill', d => d.delta > 0.2 ? '#FF3D6B' : d.delta < -0.2 ? '#00E57A' : '#A08800')
+    .text(d => {
+      const p = Math.round(d.delta * 100);
+      return p !== 0 ? (p > 0 ? `+${p}%` : `${p}%`) : '';
+    });
+
+  // labels on canvas
+  svg.append('text').attr('x', W/2).attr('y', 18).attr('text-anchor','middle').attr('class','g-label')
+    .text(`${REGIONS[curRegion].name} · ${momentLabel(curMoment)} · Δ vs. Baseline`);
+  svg.append('text').attr('x', W-8).attr('y', H-8).attr('text-anchor','end').attr('class','g-label')
+    .text('── Sequencial   ╌╌ Concomitante   ○ Anomalia alta');
+
+  sim.on('tick', () => {
+    edgePath.attr('d', d => {
+      if (!d.source.x) return '';
+      const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+      const dr = Math.sqrt(dx*dx+dy*dy) * (d.concurrent ? 0.55 : 0.75);
+      const sw = d.concurrent ? 1 : 0;
+      return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,${sw} ${d.target.x},${d.target.y}`;
+    });
+    edgeLabel.attr('x', d => {
+      if (!d.source.x) return 0;
+      return (d.source.x + d.target.x) / 2;
+    }).attr('y', d => {
+      if (!d.source.y) return 0;
+      return (d.source.y + d.target.y) / 2 - 8;
+    });
+    nodeEl.attr('transform', d => `translate(${d.x||0},${d.y||0})`);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SOBREPOSIÇÃO — baseline (translúcido) + live (sólido)
+// ═══════════════════════════════════════════════════════════════════════════
+function renderOverlay() {
+  const svg = d3.select('#overlay-svg');
+  svg.selectAll('*').remove();
+  const W = document.getElementById('view-overlay').clientWidth  || 700;
+  const H = document.getElementById('center').clientHeight       || 480;
+  svg.attr('viewBox', `0 0 ${W} ${H}`);
+
+  const reg   = REGIONS[curRegion];
+  const base  = MOMENTS.base;
+  const live  = MOMENTS[curMoment];
+  const edges = EDGES_BY_MOMENT[curMoment] || [];
+
+  const baseVols = base.map((v,i) => v * reg.mult[i]);
+  const liveVols = live.map((v,i) => v * reg.mult[i]);
+  const maxAll   = Math.max(...liveVols, ...baseVols);
+
+  const activeSet = new Set();
+  edges.forEach(e => { activeSet.add(e[0]); activeSet.add(e[1]); });
+  EDGES_BY_MOMENT.base.forEach(e => { activeSet.add(e[0]); activeSet.add(e[1]); });
+
+  const nodes = RG.filter((_,i) => activeSet.has(i)).map(rg => {
+    const idx = RG.indexOf(rg);
+    return { ...rg, idx, lv: liveVols[idx], bv: baseVols[idx] };
+  });
+  const nodeMap = {};
+  nodes.forEach(n => nodeMap[n.idx] = n);
+
+  const sim = d3.forceSimulation(nodes)
+    .force('charge', d3.forceManyBody().strength(-300))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .force('collision', d3.forceCollide(50));
+
+  // grid
+  d3.range(0,H,44).forEach(y => svg.append('line').attr('x1',0).attr('y1',y).attr('x2',W).attr('y2',y).attr('stroke','#0C1F14').attr('stroke-width',1));
+  d3.range(0,W,44).forEach(x => svg.append('line').attr('x1',x).attr('y1',0).attr('x2',x).attr('y2',H).attr('stroke','#0C1F14').attr('stroke-width',1));
+
+  const nodeEl = svg.append('g').selectAll('g').data(nodes).enter().append('g');
+
+  // baseline ring (translucent grey)
+  nodeEl.append('circle')
+    .attr('r', d => 12 + (d.bv / maxAll) * 22)
+    .attr('fill','none')
+    .attr('stroke','#3A5A4A')
+    .attr('stroke-width',1.5)
+    .attr('stroke-dasharray','4,3')
+    .attr('opacity',0.6);
+
+  // live ring (solid, colored)
+  nodeEl.append('circle')
+    .attr('r', d => 12 + (d.lv / maxAll) * 22)
+    .attr('fill', d => d.color + '33')
+    .attr('stroke', d => d.color)
+    .attr('stroke-width',2);
+
+  nodeEl.append('text').attr('text-anchor','middle')
+    .append('tspan').text(d => d.s)
+    .attr('x',0).attr('fill','#E8F5E8').attr('font-size','10px').attr('font-weight','700');
+
+  svg.append('text').attr('x',W/2).attr('y',18).attr('text-anchor','middle').attr('class','g-label')
+    .text(`Sobreposição Baseline ╌╌ vs. Ao vivo ── · ${REGIONS[curRegion].name}`);
+  svg.append('text').attr('x',W-8).attr('y',H-8).attr('text-anchor','end').attr('class','g-label')
+    .text('Anel cinza tracejado = baseline · Anel colorido sólido = ao vivo');
+
+  sim.on('tick', () => {
+    nodeEl.attr('transform', d => `translate(${Math.max(50,Math.min(W-50,d.x||W/2))},${Math.max(50,Math.min(H-50,d.y||H/2))})`);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TIMELINE SWIMLANE
+// ═══════════════════════════════════════════════════════════════════════════
+function renderTimeline() {
+  const wrap = document.getElementById('tl-wrap');
+  const tl   = genTimeline(curMoment);
+  const maxV  = Math.max(...tl.flat().map(p => Math.max(p.base, p.live)));
+
+  const hrs = ['0h','4h','8h','12h','16h','20h','24h'];
+  let html = `<div class="tl-hours" style="margin-left:56px">${hrs.map(h=>`<span style="flex:1">${h}</span>`).join('')}</div>`;
+
+  tl.forEach((hourData, i) => {
+    if (MOMENTS[curMoment][i] < 1) return;
+    const rg = RG[i];
+    let segs = '';
+    hourData.forEach(p => {
+      const x  = (p.h / 24) * 100;
+      const ww = (1 / 24) * 100;
+      const lh = (p.live / maxV) * 100;
+      const bh = (p.base / maxV) * 100;
+      const isAnom = curMoment !== 'base' && p.live > p.base * 1.5;
+      segs += `<div class="tl-seg ${isAnom?'anomaly':''}" style="left:${x}%;width:${ww}%;background:${rg.color};height:${lh}%;bottom:0;" title="${rg.s} ${p.h}h: ${p.live.toFixed(0)} GB/h"></div>`;
+      // baseline ghost
+      segs += `<div class="tl-seg" style="left:${x}%;width:${ww}%;background:#3A5A4A;height:${bh}%;bottom:0;opacity:0.3;"></div>`;
+    });
+    html += `<div class="tl-row">
+      <div class="tl-lbl" style="color:${rg.color}">${rg.s}</div>
+      <div class="tl-track">${segs}</div>
+    </div>`;
+  });
+
+  html += `<div style="margin-top:10px;font-size:9px;color:var(--muted)">
+    Barra colorida = ao vivo · Barra cinza translúcida = baseline sem Copa · 
+    Brilho na barra = anomalia (live > 1.5× baseline)
+  </div>`;
+  wrap.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SÉRIE DE ANOMALIA σ ao longo do dia
+// ═══════════════════════════════════════════════════════════════════════════
+function renderAnomalySeries() {
+  const svg = d3.select('#anom-svg');
+  svg.selectAll('*').remove();
+  const W = document.getElementById('view-anomaly').clientWidth  || 700;
+  const H = document.getElementById('center').clientHeight       || 480;
+  svg.attr('viewBox', `0 0 ${W} ${H}`);
+
+  const PAD = { t:40, r:30, b:50, l:60 };
+  const CW = W - PAD.l - PAD.r;
+  const CH = H - PAD.t - PAD.b;
+
+  const xSc = d3.scaleLinear().domain([0,23]).range([0,CW]);
+  const ySc = d3.scaleLinear().domain([0,5.5]).range([CH,0]);
+
+  const g = svg.append('g').attr('transform',`translate(${PAD.l},${PAD.t})`);
+
+  // grid lines
+  [1,2,3,4,5].forEach(v => {
+    g.append('line').attr('x1',0).attr('y1',ySc(v)).attr('x2',CW).attr('y2',ySc(v))
+      .attr('stroke','#1A3D24').attr('stroke-width',1).attr('stroke-dasharray',v>=3?'4,3':'2,4');
+    g.append('text').attr('x',-8).attr('y',ySc(v)+4)
+      .attr('text-anchor','end').attr('fill','#5A8A6A').attr('font-size','9px').text(`${v}σ`);
+  });
+
+  // threshold lines
+  [2,3].forEach(thresh => {
+    const col = thresh === 3 ? '#FF8C00' : '#FFD700';
+    const lbl = thresh === 3 ? 'Alerta (3σ)' : 'Atenção (2σ)';
+    g.append('line').attr('x1',0).attr('y1',ySc(thresh)).attr('x2',CW).attr('y2',ySc(thresh))
+      .attr('stroke',col).attr('stroke-width',1).attr('stroke-dasharray','6,3').attr('opacity',0.7);
+    g.append('text').attr('x',CW+4).attr('y',ySc(thresh)+4)
+      .attr('fill',col).attr('font-size','8px').text(lbl);
+  });
+
+  // Copa zone shading
+  g.append('rect')
+    .attr('x',xSc(19)).attr('y',0).attr('width',xSc(23)-xSc(19)).attr('height',CH)
+    .attr('fill','#FF3D6B').attr('opacity',0.06);
+  g.append('text').attr('x',(xSc(19)+xSc(23))/2).attr('y',-8)
+    .attr('text-anchor','middle').attr('fill','#FF3D6B').attr('font-size','9px').attr('opacity',0.8)
+    .text('Janela do jogo');
+
+  // gol marker
+  g.append('line').attr('x1',xSc(21)).attr('y1',0).attr('x2',xSc(21)).attr('y2',CH)
+    .attr('stroke','#FFD700').attr('stroke-width',1.5).attr('stroke-dasharray','3,2');
+  g.append('text').attr('x',xSc(21)+4).attr('y',12)
+    .attr('fill','#FFD700').attr('font-size','9px').attr('font-weight','700').text('⚽ Gol Brasil 73\'');
+
+  // area fill
+  const area = d3.area().x(d=>xSc(d.h)).y0(CH).y1(d=>ySc(d.sigma)).curve(d3.curveCatmullRom);
+  const lineF = d3.line().x(d=>xSc(d.h)).y(d=>ySc(d.sigma)).curve(d3.curveCatmullRom);
+
+  const areaGrad = svg.append('defs').append('linearGradient').attr('id','anom-grad').attr('x1',0).attr('x2',0).attr('y1',0).attr('y2',1);
+  areaGrad.append('stop').attr('offset','0%').attr('stop-color','#FF3D6B').attr('stop-opacity',0.35);
+  areaGrad.append('stop').attr('offset','100%').attr('stop-color','#FF3D6B').attr('stop-opacity',0.02);
+
+  g.append('path').datum(ANOMALY_SERIES).attr('d',area).attr('fill','url(#anom-grad)');
+  g.append('path').datum(ANOMALY_SERIES).attr('d',lineF)
+    .attr('fill','none').attr('stroke','#FF3D6B').attr('stroke-width',2);
+
+  // dots
+  g.selectAll('circle.anom-dot').data(ANOMALY_SERIES).enter().append('circle')
+    .attr('class','anom-dot')
+    .attr('cx',d=>xSc(d.h)).attr('cy',d=>ySc(d.sigma)).attr('r',3)
+    .attr('fill', d => d.sigma >= 3 ? '#FF3D6B' : d.sigma >= 2 ? '#FF8C00' : '#FFD700')
+    .attr('stroke','#071510').attr('stroke-width',1.5)
+    .on('mouseover',(ev,d) => showTT(ev,`<div class="tt-t">${d.h}:00h</div>Anomalia: <b>${d.sigma}σ</b><br>${d.sigma>=4?'⚠ CRÍTICO':d.sigma>=3?'⚡ ALERTA':'Info'}`))
+    .on('mousemove',moveTT).on('mouseout',hideTT);
+
+  // axes
+  g.append('g').attr('transform',`translate(0,${CH})`)
+    .call(d3.axisBottom(xSc).ticks(12).tickFormat(d=>`${d}h`))
+    .selectAll('text').attr('fill','#5A8A6A').attr('font-size','9px');
+  g.selectAll('.domain,.tick line').attr('stroke','#1A3D24');
+
+  svg.append('text').attr('x',W/2).attr('y',PAD.t-10).attr('text-anchor','middle').attr('class','g-label')
+    .text(`Série de Anomalia Topológica (σ) — ${REGIONS[curRegion].name} · Dia do Jogo vs. Baseline`);
+  svg.append('text').attr('x',PAD.l-45).attr('y',H/2).attr('text-anchor','middle')
+    .attr('transform',`rotate(-90,${PAD.l-45},${H/2})`)
+    .attr('fill','#5A8A6A').attr('font-size','9px').text('Desvio padrão (σ) vs. baseline');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RIGHT PANEL
+// ═══════════════════════════════════════════════════════════════════════════
+const INSIGHTS = {
+  live:[
+    {t:'red',   lb:'⚽ Anomalia Copa',   ti:'Dígrafo em estado de exceção: 4.2σ',
+     b:'<strong>RG01 (Streaming) +187%</strong> e <strong>RG02 (Social) +142%</strong> dominam todas as arestas. RG03 (Gaming) colapsou: −64%. O evento reconfigurou completamente a topologia da jornada.'},
+    {t:'gold',  lb:'QoS Crítico',        ti:'Betweenness de RG01 em pico histórico',
+     b:'RG01 é agora o nó de maior centralidade de intermediação da rede — toda jornada passa por Streaming. Latência de abertura de sessão em RG01 é o KPI mais crítico desta janela.'},
+    {t:'purple',lb:'Concomitância',       ti:'Video ‖ Social simultâneos em 91% das sessões',
+     b:'Comportamento de segunda tela: assinante assiste streaming enquanto posta no social. Aresta concomitante mais pesada do histórico.'},
+    {t:'blue',  lb:'Oportunidade',        ti:'Network Slicing para transmissoras ao vivo',
+     b:'Uplink intenso de RG04 (transmissão ao vivo) em células de estádios. Janela ideal para ativar slice premium para imprensa e produtoras.'},
+    {t:'green', lb:'Retenção',            ti:'Gamer em risco: RG03 colapsou',
+     b:'PM-2 (gamers) com dígrafo alterado: abandono de sessões gaming por qualidade degradada? Monitorar score de colapso PM-6 nos MSISDNs com histórico de gaming alto.'},
+  ],
+  base:[
+    {t:'gold', lb:'Baseline', ti:'Semana sem Copa — padrão normal',
+     b:'Jornada distribuída com equilíbrio entre RGs. Streaming (42 GB/h), Social (28 GB/h) e Gaming (18 GB/h) coexistem. Entropia de dígrafo: 2.4 bits — padrão saudável.'},
+    {t:'blue', lb:'Referência', ti:'Este é o baseline para comparação',
+     b:'Todas as anomalias do evento Copa são mensuradas em relação a esta semana de referência. O dígrafo baseline tem 8 nós ativos e 15 arestas com peso distribuído.'},
+  ],
+  pre:[
+    {t:'gold',   lb:'Pré-jogo', ti:'Frenesi de consumo de notícias: +200%',
+     b:'RG08 (News) explodiu 3h antes do jogo. RG02 (Social) +61%. Comportamento de antecipação: busca de informação e compartilhamento antes do evento.'},
+    {t:'purple', lb:'Jornada emergente', ti:'Social → News → Social: ciclo de antecipação',
+     b:'Nova aresta forte aparece: News ↔ Social em ciclo bidirecional. Assinante consome notícias e compartilha no social em loop — padrão inexistente no baseline.'},
+  ],
+  post:[
+    {t:'red',   lb:'Pós-gol', ti:'Social em pico máximo histórico: +142%',
+     b:'Gol do Brasil disparou RG02 para maior valor já observado. RG08 (News) +567%. Mensageria (RG09) +244%: WhatsApp e grupos de família em sobrecarga.'},
+    {t:'gold',  lb:'Streaming mantido', ti:'RG01 continua alto mesmo após o gol',
+     b:'Assinantes mantêm o streaming ativo enquanto celebram no social — concomitância Video ‖ Social em 94% das sessões. Pico de demanda dual sustentado.'},
+  ],
+  goal:[
+    {t:'red',   lb:'⚡ Spike de social', ti:'RG02 (Social) maior valor da série histórica',
+     b:'5 minutos após o gol: Social em 310 GB/h — desvio de 5.1σ. Maior anomalia já observada. Mensageria em 95 GB/h (+955%). Caiu tráfego de tudo mais.'},
+    {t:'purple',lb:'Alertas de rede',    ti:'Risco de congestionamento: Social + News',
+     b:'Fluxo máximo do dígrafo agregado saturando pela concomitância Social ‖ News ‖ Mensageria. Janela crítica: 5–15 min após gol. Ativar CDN de texto e imagem.'},
+  ],
+};
+
+const RG_DATA_PANELS = () => {
+  const reg  = REGIONS[curRegion];
+  const base = MOMENTS.base;
+  const live = MOMENTS[curMoment];
+  return RG.map((rg, i) => {
+    const b  = (base[i] * reg.mult[i]).toFixed(1);
+    const l  = (live[i] * reg.mult[i]).toFixed(1);
+    const pct= Math.round(((live[i]-base[i])/base[i])*100);
+    const sg = pct > 0 ? '+' : '';
+    return `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border)">
+      <div style="width:8px;height:8px;border-radius:50%;background:${rg.color};flex-shrink:0"></div>
+      <span style="flex:1;font-size:10px;color:var(--text)">${rg.s}</span>
+      <span style="font-size:9px;color:var(--muted)">${b} → ${l} GB/h</span>
+      <span style="font-size:10px;font-weight:800;color:${pct>20?'var(--red)':pct<-20?'var(--green)':'var(--gold)'}">${sg}${pct}%</span>
+    </div>`;
+  }).join('');
+};
+
+const QOS_PANEL = () => `
+  <div class="icard blue"><div class="ic-label">Betweenness Centrality</div>
+    <div class="ic-title">RG01 = hub da jornada</div>
+    <div class="ic-body">Nó de maior passagem: toda interrupção em Streaming propaga para 7/9 outras transições. <strong>Prioridade máxima de abertura de sessão.</strong></div></div>
+  <div class="icard ${curMoment==='live'||curMoment==='post'?'red':'gold'}">
+    <div class="ic-label">PageRank</div>
+    <div class="ic-title">RG02 (Social): PageRank 0.38</div>
+    <div class="ic-body">Hub de re-entrada: assinante volta ao Social entre atividades. Latência de 3s na abertura de sessão Social interrompe toda cadeia subsequente.</div></div>
+  <div class="icard green"><div class="ic-label">Anomalia σ</div>
+    <div class="ic-title">${REGIONS[curRegion].anomaly}σ · ${curMoment==='goal'?'CRÍTICO':curMoment==='post'||curMoment==='live'?'ALERTA':'Normal'}</div>
+    <div class="ic-body">Desvio de <strong>${REGIONS[curRegion].anomaly} desvios padrão</strong> do baseline histórico. Threshold de alerta NOC: 3σ. <strong>Janela de intervenção ativa.</strong></div></div>
+  <div class="icard"><div class="ic-label">Entropia do Dígrafo</div>
+    <div class="ic-title">${curMoment==='base'?'2.4 bits (normal)':curMoment==='live'||curMoment==='post'?'1.1 bits (concentrado)':'1.8 bits (transição)'}</div>
+    <div class="ic-body">Concentração extrema em 2 RGs (Streaming + Social). Comportamento coletivo altamente previsível — ideal para planejamento de capacidade antecipado para próximos jogos.</div></div>
+`;
+
+function renderRight() {
+  const el = document.getElementById('rcontent');
+  if (curRTab === 'insights') {
+    const ins = INSIGHTS[curMoment] || INSIGHTS.live;
+    el.innerHTML = ins.map(i => `
+      <div class="icard ${i.t}">
+        <div class="ic-label">${i.lb}</div>
+        <div class="ic-title">${i.ti}</div>
+        <div class="ic-body">${i.b}</div>
+      </div>`).join('');
+  } else if (curRTab === 'data') {
+    el.innerHTML = `
+      <div style="font-size:9px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.08em">
+        ${REGIONS[curRegion].name} · ${momentLabel(curMoment)} · GB/hora agregado
+      </div>
+      ${RG_DATA_PANELS()}`;
+  } else {
+    el.innerHTML = QOS_PANEL();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SIMULAÇÃO DO JOGO
+// ═══════════════════════════════════════════════════════════════════════════
+const SIM_PHASES = ['base','pre','live','post','goal','live','post'];
+const SIM_TIMES  = ['Baseline','Pré-jogo (18h)','Jogo em andamento (20h)','Após gol (73\')','⚽ Gol! +2min','Retomada (75\')','Novo equilíbrio (80\')'];
+const SIM_SCORES = ['—','0 — 0','1 — 0','1 — 0','2 — 0','2 — 0','2 — 1'];
+const SIM_SIGMAS = ['0.2σ','1.2σ','3.8σ','4.2σ','5.1σ','4.6σ','4.0σ'];
+
+function toggleSim() {
+  if (simRunning) {
+    clearInterval(simTimer);
+    simRunning = false;
+    document.getElementById('sim-btn').textContent = '⏵ Simular jogo';
+    return;
+  }
+  simRunning = true;
+  simPhase   = 0;
+  document.getElementById('sim-btn').textContent = '⏹ Parar simulação';
+  runSimStep();
+  simTimer = setInterval(runSimStep, 2800);
+}
+
+function runSimStep() {
+  if (simPhase >= SIM_PHASES.length) {
+    clearInterval(simTimer);
+    simRunning = false;
+    document.getElementById('sim-btn').textContent = '⏵ Simular jogo';
+    return;
+  }
+  const phase = SIM_PHASES[simPhase];
+  curMoment = phase;
+
+  document.getElementById('time-label').textContent = SIM_TIMES[simPhase] + ' · Copa do Mundo 2026';
+  document.getElementById('score-label').textContent = SIM_SCORES[simPhase];
+  document.getElementById('chip-sigma').textContent  = SIM_SIGMAS[simPhase];
+
+  // update chips
+  const live = MOMENTS[phase];
+  const base = MOMENTS.base;
+  const pctStream = Math.round(((live[0]-base[0])/base[0])*100);
+  const pctGaming = Math.round(((live[2]-base[2])/base[2])*100);
+  const pctSocial = Math.round(((live[1]-base[1])/base[1])*100);
+  const pctWork   = Math.round(((live[4]-base[4])/base[4])*100);
+  document.getElementById('chip-stream').textContent = (pctStream>0?'+':'')+pctStream+'%';
+  document.getElementById('chip-gaming').textContent = (pctGaming>0?'+':'')+pctGaming+'%';
+  document.getElementById('chip-social').textContent = (pctSocial>0?'+':'')+pctSocial+'%';
+  document.getElementById('chip-work').textContent   = (pctWork>0?'+':'')+pctWork+'%';
+
+  refreshView();
+  renderRGLegend();
+  renderRight();
+  simPhase++;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════════════════════════════════════
+function setView(v, btn) {
+  curView = v;
+  document.querySelectorAll('.tb-btn').forEach(b => {
+    if (['Dígrafo Δ','Sobreposição','Timeline','Série Anomalia'].includes(b.textContent)) b.classList.remove('active');
+  });
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-'+v).classList.add('active');
+  refreshView();
+}
+
+function refreshView() {
+  if (curView==='graph')   renderGraph();
+  else if (curView==='overlay')  renderOverlay();
+  else if (curView==='timeline') renderTimeline();
+  else if (curView==='anomaly')  renderAnomalySeries();
+}
+
+function selectRegion(idx) {
+  curRegion = parseInt(idx);
+  document.getElementById('region-sel').value = idx;
+  renderRegionList();
+  renderRGLegend();
+  refreshView();
+  renderRight();
+}
+
+function setMoment(m) {
+  curMoment = m;
+  document.querySelectorAll('.tb-btn').forEach(b => {
+    if (['Pré-jogo','🔴 Ao vivo','Pós-gol','Baseline (sem Copa)'].includes(b.textContent))
+      b.classList.remove('active');
+  });
+  event.target.classList.add('active');
+  const live = MOMENTS[m];
+  const base = MOMENTS.base;
+  const pct  = i => Math.round(((live[i]-base[i])/base[i])*100);
+  const fmt  = i => { const p=pct(i); return (p>0?'+':'')+p+'%'; };
+  document.getElementById('chip-stream').textContent = fmt(0);
+  document.getElementById('chip-gaming').textContent = fmt(2);
+  document.getElementById('chip-social').textContent = fmt(1);
+  document.getElementById('chip-work').textContent   = fmt(4);
+  renderRGLegend();
+  refreshView();
+  renderRight();
+}
+
+function setRTab(el, tab) {
+  curRTab = tab;
+  document.querySelectorAll('.rtab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderRight();
+}
+
+function momentLabel(m) {
+  return {base:'Baseline',pre:'Pré-jogo',live:'Ao vivo',post:'Pós-gol',goal:'Spike de gol'}[m]||m;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOOLTIP
+// ═══════════════════════════════════════════════════════════════════════════
+function showTT(ev, html) {
+  const tt = document.getElementById('tt');
+  tt.innerHTML = html; tt.style.display = 'block'; moveTT(ev);
+}
+function moveTT(ev) {
+  const tt = document.getElementById('tt');
+  tt.style.left = (ev.clientX+12)+'px';
+  tt.style.top  = (ev.clientY-8)+'px';
+}
+function hideTT() { document.getElementById('tt').style.display='none'; }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESIZE
+// ═══════════════════════════════════════════════════════════════════════════
+window.addEventListener('resize', () => {
+  renderPulseBar();
+  setTimeout(refreshView, 100);
+});
+
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
