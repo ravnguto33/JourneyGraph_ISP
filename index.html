@@ -20,8 +20,9 @@
   --purple:    #B06DFF;
   --orange:    #FF8C00;
   --teal:      #00D4AA;
-  --text:      #E8F5E8;
-  --muted:     #5A8A6A;
+  --text:      #FFFFFF;
+  --muted:     #9DB8A8;
+  --highlight: #FFB300;
   --claro:     #E2001A;
   --white:     #FFFFFF;
 }
@@ -32,7 +33,7 @@ body {
   background: var(--pitch);
   color: var(--text);
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-  font-size: 12px;
+  font-size: 13px;
   height: 100vh;
   overflow: hidden;
   display: flex;
@@ -76,14 +77,14 @@ body {
   background: var(--claro);
   padding: 4px 10px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.06em;
   flex-shrink: 0;
 }
 
 .match-score {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 900;
   color: var(--gold);
   letter-spacing: 0.05em;
@@ -91,14 +92,14 @@ body {
 }
 
 .match-teams {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--text);
+  color: var(--white);
   flex-shrink: 0;
 }
 
 .match-time {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
   flex-shrink: 0;
 }
@@ -117,21 +118,21 @@ body {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 3px 8px;
-  font-size: 10px;
+  padding: 3px 10px;
+  font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
 }
 
 .anom-chip .val {
   font-weight: 800;
-  font-size: 12px;
-  margin-left: 2px;
+  font-size: 14px;
+  margin-left: 3px;
 }
 
 .anom-chip .val.up   { color: var(--red); }
 .anom-chip .val.down { color: var(--green); }
-.anom-chip .val.neu  { color: var(--gold); }
+.anom-chip .val.neu  { color: var(--highlight); }
 
 .live-dot {
   width: 6px; height: 6px;
@@ -148,48 +149,76 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 14px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  padding: 7px 14px;
+  background: #FFFFFF;
+  border-bottom: 2px solid #D0DCE8;
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
 .tb-label {
-  font-size: 9px;
-  color: var(--muted);
+  font-size: 10px;
+  color: #4A5568;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
+  font-weight: 700;
 }
 
 .tb-btn {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  color: var(--muted);
-  padding: 4px 10px;
-  border-radius: 4px;
+  background: #F0F4F8;
+  border: 1.5px solid #B8C8D8;
+  color: #2D3748;
+  padding: 5px 12px;
+  border-radius: 5px;
   cursor: pointer;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   transition: all 0.15s;
   white-space: nowrap;
 }
-.tb-btn:hover  { border-color: var(--gold); color: var(--gold); }
-.tb-btn.active { background: var(--gold); border-color: var(--gold); color: #000; }
+.tb-btn:hover  { background: #E2EDFA; border-color: #1F4E79; color: #1F4E79; }
+.tb-btn.active { background: #1F4E79; border-color: #1F4E79; color: #FFD700; }
 
-.tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
+/* Botões de Momento — cores distintas por tipo */
+.tb-btn.moment-pre    { border-color: #7D6608; color: #7D6608; }
+.tb-btn.moment-pre:hover    { background: #FFF9E6; }
+.tb-btn.moment-pre.active   { background: #7D6608; color: #FFD700; }
+
+.tb-btn.moment-live   { border-color: #C0392B; color: #C0392B; }
+.tb-btn.moment-live:hover   { background: #FFF0EE; }
+.tb-btn.moment-live.active  { background: #C0392B; color: #FFFFFF; }
+
+.tb-btn.moment-post   { border-color: #7D3030; color: #7D3030; }
+.tb-btn.moment-post:hover   { background: #FFF2F2; }
+.tb-btn.moment-post.active  { background: #7D3030; color: #FFFFFF; }
+
+.tb-btn.moment-base   { border-color: #1B7A3E; color: #1B7A3E; }
+.tb-btn.moment-base:hover   { background: #F0FFF6; }
+.tb-btn.moment-base.active  { background: #1B7A3E; color: #FFFFFF; }
+
+.tb-btn.sim-btn {
+  border-color: #B8860B;
+  color: #B8860B;
+  font-weight: 800;
+}
+.tb-btn.sim-btn:hover  { background: #FFFBE6; }
+.tb-btn.sim-btn.running { background: #7D6608; border-color: #7D6608; color: #FFFFFF; }
+
+.tb-sep { width: 1px; height: 22px; background: #CBD5E0; margin: 0 3px; }
 
 select.tb-sel {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 10px;
+  background: #F0F4F8;
+  border: 1.5px solid #B8C8D8;
+  color: #2D3748;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
   outline: none;
 }
+select.tb-sel:focus { border-color: #1F4E79; }
 
 /* ── MAIN ────────────────────────────────────────── */
 .main {
@@ -215,11 +244,11 @@ select.tb-sel {
 }
 
 .lsec-title {
-  font-size: 8px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
+  letter-spacing: 0.08em;
+  color: var(--highlight);
   margin-bottom: 8px;
 }
 
@@ -227,49 +256,50 @@ select.tb-sel {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 5px;
-  padding: 8px 10px;
+  padding: 9px 10px;
   margin-bottom: 5px;
   cursor: pointer;
   transition: all 0.15s;
 }
-.region-card:hover   { border-color: var(--gold-dim); }
-.region-card.active  { border-color: var(--gold); background: #1A2D10; }
+.region-card:hover   { border-color: var(--highlight); }
+.region-card.active  { border-color: var(--highlight); background: #1A2D10; }
 
 .rc-name {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--text);
+  color: #FFFFFF;
   margin-bottom: 2px;
 }
 
 .rc-meta {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--muted);
 }
 
 .rc-anom {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   margin-top: 3px;
+  color: var(--highlight);   /* sempre laranja — uniforme */
 }
 .rc-anom.hi  { color: var(--red); }
-.rc-anom.med { color: var(--gold); }
-.rc-anom.lo  { color: var(--green); }
+.rc-anom.med { color: var(--highlight); }
+.rc-anom.lo  { color: var(--highlight); }  /* era verde, agora laranja */
 
-.rg-legend { display: flex; flex-direction: column; gap: 3px; }
+.rg-legend { display: flex; flex-direction: column; gap: 4px; }
 .rg-row {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 7px;
   padding: 2px 0;
-  font-size: 10px; color: var(--text);
+  font-size: 12px; color: #FFFFFF;
 }
-.rg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.rg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .rg-delta {
   margin-left: auto;
-  font-size: 9px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 800;
 }
 .rg-delta.up   { color: var(--red); }
-.rg-delta.down { color: var(--green); }
+.rg-delta.down { color: #00E57A; }
 .rg-delta.neu  { color: var(--muted); }
 
 /* ── CENTER ──────────────────────────────────────── */
@@ -310,9 +340,9 @@ select.tb-sel {
 
 .rtab {
   flex: 1;
-  padding: 7px 4px;
+  padding: 9px 4px;
   text-align: center;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--muted);
   cursor: pointer;
@@ -321,19 +351,19 @@ select.tb-sel {
   border-bottom: 2px solid transparent;
   transition: all 0.15s;
 }
-.rtab:hover { color: var(--text); }
-.rtab.active { color: var(--gold); border-bottom-color: var(--gold); }
+.rtab:hover { color: #FFFFFF; }
+.rtab.active { color: var(--highlight); border-bottom-color: var(--highlight); }
 
-.rcontent { flex: 1; overflow-y: auto; padding: 10px 12px; }
+.rcontent { flex: 1; overflow-y: auto; padding: 12px 13px; }
 
 /* insight cards */
 .icard {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 10px;
-  margin-bottom: 8px;
-  border-left: 3px solid var(--gold);
+  padding: 11px;
+  margin-bottom: 9px;
+  border-left: 3px solid var(--highlight);
 }
 .icard.red    { border-left-color: var(--red); }
 .icard.green  { border-left-color: var(--green); }
@@ -341,44 +371,45 @@ select.tb-sel {
 .icard.purple { border-left-color: var(--purple); }
 
 .ic-label {
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--muted);
+  color: var(--highlight);   /* laranja uniforme — era muted */
   margin-bottom: 3px;
 }
 .ic-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--text);
+  color: #FFFFFF;
   line-height: 1.3;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }
 .ic-body {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
-  line-height: 1.5;
+  line-height: 1.55;
 }
-.ic-body strong { color: var(--text); }
+.ic-body strong { color: var(--highlight); }
 
 /* timeline */
 .tl-wrap { overflow-x: hidden; }
 .tl-hours {
-  display: flex; margin-left: 56px; margin-bottom: 3px;
-  font-size: 8px; color: var(--muted);
+  display: flex; margin-left: 60px; margin-bottom: 4px;
+  font-size: 10px; color: var(--muted);
 }
 .tl-row {
   display: flex; align-items: center;
-  margin-bottom: 4px; height: 18px;
+  margin-bottom: 5px; height: 20px;
 }
 .tl-lbl {
-  width: 52px; font-size: 9px; color: var(--muted);
+  width: 56px; font-size: 11px; color: var(--white);
   flex-shrink: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600;
 }
 .tl-track {
-  flex: 1; position: relative; height: 12px;
+  flex: 1; position: relative; height: 14px;
   background: var(--panel); border-radius: 2px; overflow: hidden;
 }
 .tl-seg {
@@ -389,7 +420,7 @@ select.tb-sel {
 .tl-seg.anomaly { opacity: 1; box-shadow: 0 0 6px currentColor; }
 
 /* scrollbar */
-::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
@@ -397,24 +428,47 @@ select.tb-sel {
 #tt {
   position: fixed;
   background: #0C1F14EE;
-  border: 1px solid var(--gold);
+  border: 1px solid var(--highlight);
   border-radius: 6px;
-  padding: 8px 10px;
-  font-size: 10px;
-  color: var(--text);
+  padding: 9px 11px;
+  font-size: 12px;
+  color: var(--white);
   pointer-events: none;
   z-index: 999;
-  max-width: 190px;
+  max-width: 200px;
   display: none;
   line-height: 1.6;
   backdrop-filter: blur(8px);
 }
-#tt .tt-t { font-size: 11px; font-weight: 700; margin-bottom: 3px; color: var(--gold); }
+#tt .tt-t { font-size: 13px; font-weight: 700; margin-bottom: 3px; color: var(--highlight); }
 
 /* delta badge on edges */
 .delta-badge {
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 800;
+  pointer-events: none;
+}
+
+/* g-label no SVG */
+.g-label {
+  font-size: 11px;
+  fill: #9DB8A8;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* node labels SVG */
+.node-label-main {
+  font-size: 12px;
+  font-weight: 700;
+  fill: #FFFFFF;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.node-label-vol {
+  font-size: 10px;
+  fill: #FFB300;
+  text-anchor: middle;
   pointer-events: none;
 }
 </style>
@@ -460,12 +514,12 @@ select.tb-sel {
   </select>
   <div class="tb-sep"></div>
   <span class="tb-label">Momento:</span>
-  <button class="tb-btn" onclick="setMoment('pre')">Pré-jogo</button>
-  <button class="tb-btn active" id="btn-live" onclick="setMoment('live')">🔴 Ao vivo</button>
-  <button class="tb-btn" onclick="setMoment('post')">Pós-gol</button>
-  <button class="tb-btn" onclick="setMoment('base')">Baseline (sem Copa)</button>
+  <button class="tb-btn moment-base" onclick="setMoment('base')">Baseline</button>
+  <button class="tb-btn moment-pre" onclick="setMoment('pre')">Pré-jogo</button>
+  <button class="tb-btn moment-live active" id="btn-live" onclick="setMoment('live')">🔴 Ao vivo</button>
+  <button class="tb-btn moment-post" onclick="setMoment('post')">Pós-gol</button>
   <div class="tb-sep"></div>
-  <button class="tb-btn" id="sim-btn" onclick="toggleSim()" style="border-color:var(--gold);color:var(--gold)">⏵ Simular jogo</button>
+  <button class="tb-btn sim-btn" id="sim-btn" onclick="toggleSim()">⏵ Simular jogo</button>
 </div>
 
 <!-- ── MAIN ──────────────────────────────────────────────────────────────── -->
@@ -780,10 +834,12 @@ function renderGraph() {
     .append('path').attr('d','M0,-5L10,0L0,5').attr('fill','#FFD700').attr('opacity',1);
 
   const sim = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(d=>d.idx).distance(150).strength(0.4))
-    .force('charge', d3.forceManyBody().strength(-350))
+    .force('link', d3.forceLink(links).id(d=>d.idx).distance(d => 190 - d.w*1.5).strength(0.35))
+    .force('charge', d3.forceManyBody().strength(-600))
     .force('center', d3.forceCenter(W/2, H/2))
-    .force('collision', d3.forceCollide(55));
+    .force('collision', d3.forceCollide(70))
+    .force('x', d3.forceX(W/2).strength(0.02))
+    .force('y', d3.forceY(H/2).strength(0.02));
 
   // edges
   const edgeG = svg.append('g');
@@ -814,18 +870,37 @@ function renderGraph() {
   // nodes
   const nodeG = svg.append('g');
   const nodeEl = nodeG.selectAll('g').data(nodes).enter().append('g')
-    .attr('cursor','pointer')
+    .attr('cursor','grab')
     .call(d3.drag()
-      .on('start',(ev,d)=>{ if(!ev.active) sim.alphaTarget(0.3).restart(); d.fx=d.x;d.fy=d.y; })
-      .on('drag', (ev,d)=>{ d.fx=ev.x;d.fy=ev.y; })
-      .on('end',  (ev,d)=>{ if(!ev.active) sim.alphaTarget(0);d.fx=null;d.fy=null; }))
+      .on('start', (ev,d) => {
+        if (!ev.active) sim.alphaTarget(0.3).restart();
+        d.fx = d.x; d.fy = d.y;
+        ev.sourceEvent.target.closest('g').style.cursor = 'grabbing';
+      })
+      .on('drag', (ev,d) => {
+        d.fx = ev.x; d.fy = ev.y;
+      })
+      .on('end', (ev,d) => {
+        if (!ev.active) sim.alphaTarget(0);
+        // FIXAR: mantém fx/fy após soltar — nó fica pregado
+        // Duplo-clique no nó libera (handler abaixo)
+        ev.sourceEvent.target.closest('g').style.cursor = 'grab';
+      })
+    )
+    .on('dblclick', (ev,d) => {
+      // duplo-clique libera o nó para a simulação mover
+      d.fx = null; d.fy = null;
+      sim.alphaTarget(0.2).restart();
+      setTimeout(() => sim.alphaTarget(0), 800);
+    })
     .on('mouseover', (ev, d) => {
       const pct = Math.round(d.delta * 100);
       const sign = pct > 0 ? '+' : '';
       showTT(ev, `<div class="tt-t">${d.s} (${d.id})</div>
         Ao vivo: ${d.lv.toFixed(0)} GB/h<br>
         Baseline: ${d.bv.toFixed(0)} GB/h<br>
-        Δ: <b>${sign}${pct}%</b><br>RGT: ${d.rgt}`);
+        Δ: <b>${sign}${pct}%</b><br>RGT: ${d.rgt}<br>
+        <span style="color:#9DB8A8;font-size:10px">Duplo-clique para soltar</span>`);
     })
     .on('mousemove', moveTT).on('mouseout', hideTT);
 
@@ -850,26 +925,36 @@ function renderGraph() {
 
   const lbl = nodeEl.append('text').attr('text-anchor','middle').attr('pointer-events','none');
   lbl.append('tspan').text(d=>d.label.split('\n')[0])
-    .attr('x',0).attr('dy','-0.4em').attr('fill','#E8F5E8').attr('font-size','10px').attr('font-weight','700');
+    .attr('x',0).attr('dy','-0.4em').attr('fill','#FFFFFF').attr('font-size','12px').attr('font-weight','700');
   lbl.append('tspan').text(d=>d.label.split('\n')[1]||'')
-    .attr('x',0).attr('dy','1.1em').attr('fill','#E8F5E8').attr('font-size','10px').attr('font-weight','700');
+    .attr('x',0).attr('dy','1.15em').attr('fill','#FFFFFF').attr('font-size','12px').attr('font-weight','700');
 
   // delta badge below node
   nodeEl.append('text')
     .attr('text-anchor','middle')
-    .attr('y', d => 28 + (d.lv/maxLive)*16)
-    .attr('font-size','9px').attr('font-weight','800').attr('pointer-events','none')
-    .attr('fill', d => d.delta > 0.2 ? '#FF3D6B' : d.delta < -0.2 ? '#00E57A' : '#A08800')
+    .attr('y', d => 30 + (d.lv/maxLive)*16)
+    .attr('font-size','11px').attr('font-weight','800').attr('pointer-events','none')
+    .attr('fill', d => d.delta > 0.2 ? '#FF3D6B' : d.delta < -0.2 ? '#00E57A' : '#FFB300')
     .text(d => {
       const p = Math.round(d.delta * 100);
       return p !== 0 ? (p > 0 ? `+${p}%` : `${p}%`) : '';
     });
 
+  // pino de "fixo" — aparece no topo do nó quando fx/fy estão definidos
+  const pinEl = nodeEl.append('text')
+    .attr('class','pin-icon')
+    .attr('text-anchor','middle')
+    .attr('font-size','13px')
+    .attr('pointer-events','none')
+    .attr('y', d => -(24 + (d.lv/maxLive)*18) - 2)
+    .text('📌')
+    .attr('opacity', 0);  // começa invisível
+
   // labels on canvas
   svg.append('text').attr('x', W/2).attr('y', 18).attr('text-anchor','middle').attr('class','g-label')
     .text(`${REGIONS[curRegion].name} · ${momentLabel(curMoment)} · Δ vs. Baseline`);
   svg.append('text').attr('x', W-8).attr('y', H-8).attr('text-anchor','end').attr('class','g-label')
-    .text('── Sequencial   ╌╌ Concomitante   ○ Anomalia alta');
+    .text('── Sequencial   ╌╌ Concomitante   · Arrastar = fixar nó · Duplo-clique = soltar');
 
   sim.on('tick', () => {
     edgePath.attr('d', d => {
@@ -887,6 +972,8 @@ function renderGraph() {
       return (d.source.y + d.target.y) / 2 - 8;
     });
     nodeEl.attr('transform', d => `translate(${d.x||0},${d.y||0})`);
+    // mostrar/ocultar pino conforme nó está fixo
+    pinEl.attr('opacity', d => (d.fx != null) ? 1 : 0);
   });
 }
 
@@ -921,9 +1008,15 @@ function renderOverlay() {
   nodes.forEach(n => nodeMap[n.idx] = n);
 
   const sim = d3.forceSimulation(nodes)
-    .force('charge', d3.forceManyBody().strength(-300))
+    .force('link', d3.forceLink(
+      edges.filter(e => nodeMap[e[0]] && nodeMap[e[1]])
+           .map(e => ({ source: nodeMap[e[0]], target: nodeMap[e[1]], w: e[2] }))
+    ).id(d=>d.idx).distance(d => 160 - (d.w||0)*1.2).strength(0.5))
+    .force('charge', d3.forceManyBody().strength(-500))
     .force('center', d3.forceCenter(W/2, H/2))
-    .force('collision', d3.forceCollide(50));
+    .force('collision', d3.forceCollide(d => 16 + Math.max(d.lv, d.bv) / maxAll * 26 + 10))
+    .force('x', d3.forceX(W/2).strength(0.05))
+    .force('y', d3.forceY(H/2).strength(0.05));
 
   // grid
   d3.range(0,H,44).forEach(y => svg.append('line').attr('x1',0).attr('y1',y).attr('x2',W).attr('y2',y).attr('stroke','#0C1F14').attr('stroke-width',1));
@@ -931,33 +1024,54 @@ function renderOverlay() {
 
   const nodeEl = svg.append('g').selectAll('g').data(nodes).enter().append('g');
 
-  // baseline ring (translucent grey)
+  // baseline ring (grey dashed)
   nodeEl.append('circle')
-    .attr('r', d => 12 + (d.bv / maxAll) * 22)
+    .attr('r', d => 14 + (d.bv / maxAll) * 24)
     .attr('fill','none')
-    .attr('stroke','#3A5A4A')
-    .attr('stroke-width',1.5)
-    .attr('stroke-dasharray','4,3')
-    .attr('opacity',0.6);
+    .attr('stroke','#4A7A5A')
+    .attr('stroke-width',1.8)
+    .attr('stroke-dasharray','5,3')
+    .attr('opacity',0.7);
 
-  // live ring (solid, colored)
+  // live ring (solid, colored, filled)
   nodeEl.append('circle')
-    .attr('r', d => 12 + (d.lv / maxAll) * 22)
-    .attr('fill', d => d.color + '33')
+    .attr('r', d => 14 + (d.lv / maxAll) * 24)
+    .attr('fill', d => d.color + '2A')
     .attr('stroke', d => d.color)
-    .attr('stroke-width',2);
+    .attr('stroke-width',2.5);
 
-  nodeEl.append('text').attr('text-anchor','middle')
-    .append('tspan').text(d => d.s)
-    .attr('x',0).attr('fill','#E8F5E8').attr('font-size','10px').attr('font-weight','700');
+  // inner fill
+  nodeEl.append('circle')
+    .attr('r', d => 8 + (d.lv / maxAll) * 12)
+    .attr('fill', d => d.color + '55');
 
-  svg.append('text').attr('x',W/2).attr('y',18).attr('text-anchor','middle').attr('class','g-label')
+  const lblOv = nodeEl.append('text').attr('text-anchor','middle').attr('pointer-events','none');
+  lblOv.append('tspan').text(d => d.label.split('\n')[0])
+    .attr('x',0).attr('dy','-0.3em').attr('fill','#FFFFFF').attr('font-size','12px').attr('font-weight','700');
+  lblOv.append('tspan').text(d => d.label.split('\n')[1]||'')
+    .attr('x',0).attr('dy','1.15em').attr('fill','#FFFFFF').attr('font-size','12px').attr('font-weight','700');
+
+  // delta badge
+  nodeEl.append('text')
+    .attr('text-anchor','middle')
+    .attr('font-size','11px').attr('font-weight','800').attr('pointer-events','none')
+    .attr('fill', d => {
+      const pct = Math.round(((d.lv-d.bv)/d.bv)*100);
+      return pct > 20 ? '#FF3D6B' : pct < -20 ? '#00E57A' : '#FFB300';
+    })
+    .attr('y', d => 22 + Math.max(d.lv, d.bv) / maxAll * 28)
+    .text(d => {
+      const p = Math.round(((d.lv-d.bv)/d.bv)*100);
+      return p !== 0 ? (p > 0 ? `+${p}%` : `${p}%`) : '';
+    });
+
+  svg.append('text').attr('x',W/2).attr('y',20).attr('text-anchor','middle').attr('class','g-label')
     .text(`Sobreposição Baseline ╌╌ vs. Ao vivo ── · ${REGIONS[curRegion].name}`);
-  svg.append('text').attr('x',W-8).attr('y',H-8).attr('text-anchor','end').attr('class','g-label')
-    .text('Anel cinza tracejado = baseline · Anel colorido sólido = ao vivo');
+  svg.append('text').attr('x',W-10).attr('y',H-10).attr('text-anchor','end').attr('class','g-label')
+    .text('Anel cinza = baseline · Anel colorido = ao vivo · Badge = Δ%');
 
   sim.on('tick', () => {
-    nodeEl.attr('transform', d => `translate(${Math.max(50,Math.min(W-50,d.x||W/2))},${Math.max(50,Math.min(H-50,d.y||H/2))})`);
+    nodeEl.attr('transform', d => `translate(${Math.max(60,Math.min(W-60,d.x||W/2))},${Math.max(60,Math.min(H-60,d.y||H/2))})`);
   });
 }
 
@@ -1139,7 +1253,7 @@ const RG_DATA_PANELS = () => {
       <div style="width:8px;height:8px;border-radius:50%;background:${rg.color};flex-shrink:0"></div>
       <span style="flex:1;font-size:10px;color:var(--text)">${rg.s}</span>
       <span style="font-size:9px;color:var(--muted)">${b} → ${l} GB/h</span>
-      <span style="font-size:10px;font-weight:800;color:${pct>20?'var(--red)':pct<-20?'var(--green)':'var(--gold)'}">${sg}${pct}%</span>
+      <span style="font-size:10px;font-weight:800;color:${pct>20?'var(--red)':pct<-20?'#00E57A':'var(--highlight)'}">${sg}${pct}%</span>
     </div>`;
   }).join('');
 };
@@ -1193,12 +1307,16 @@ function toggleSim() {
   if (simRunning) {
     clearInterval(simTimer);
     simRunning = false;
-    document.getElementById('sim-btn').textContent = '⏵ Simular jogo';
+    const btn = document.getElementById('sim-btn');
+    btn.textContent = '⏵ Simular jogo';
+    btn.classList.remove('running');
     return;
   }
   simRunning = true;
   simPhase   = 0;
-  document.getElementById('sim-btn').textContent = '⏹ Parar simulação';
+  const btn = document.getElementById('sim-btn');
+  btn.textContent = '⏹ Parar';
+  btn.classList.add('running');
   runSimStep();
   simTimer = setInterval(runSimStep, 2800);
 }
@@ -1240,8 +1358,10 @@ function runSimStep() {
 // ═══════════════════════════════════════════════════════════════════════════
 function setView(v, btn) {
   curView = v;
+  // apenas botões de visão (os 4 primeiros)
+  const viewBtns = ['Dígrafo Δ','Sobreposição','Timeline','Série Anomalia'];
   document.querySelectorAll('.tb-btn').forEach(b => {
-    if (['Dígrafo Δ','Sobreposição','Timeline','Série Anomalia'].includes(b.textContent)) b.classList.remove('active');
+    if (viewBtns.includes(b.textContent.trim())) b.classList.remove('active');
   });
   if (btn) btn.classList.add('active');
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
@@ -1267,11 +1387,16 @@ function selectRegion(idx) {
 
 function setMoment(m) {
   curMoment = m;
-  document.querySelectorAll('.tb-btn').forEach(b => {
-    if (['Pré-jogo','🔴 Ao vivo','Pós-gol','Baseline (sem Copa)'].includes(b.textContent))
-      b.classList.remove('active');
-  });
-  event.target.classList.add('active');
+  // limpar actives dos botões de momento
+  document.querySelectorAll('.tb-btn.moment-pre, .tb-btn.moment-live, .tb-btn.moment-post, .tb-btn.moment-base')
+    .forEach(b => b.classList.remove('active'));
+  // ativar o correto
+  const map = { pre:'moment-pre', live:'moment-live', post:'moment-post', base:'moment-base' };
+  const cls = map[m];
+  if (cls) {
+    const btn = document.querySelector('.tb-btn.' + cls);
+    if (btn) btn.classList.add('active');
+  }
   const live = MOMENTS[m];
   const base = MOMENTS.base;
   const pct  = i => Math.round(((live[i]-base[i])/base[i])*100);
