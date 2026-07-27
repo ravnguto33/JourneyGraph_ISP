@@ -4090,7 +4090,7 @@ function _assistBuildMsgsHtml(){
       var fonte=c.fonte||("Tech Reference §"+c.secao);
       return '<div style="font-size:11px;color:#567898;border-left:2px solid #E87000;padding-left:8px;margin-top:8px;line-height:1.6;">'+fonte+' — '+c.titulo+'</div>';
     }).join("");
-    return '<div style="align-self:flex-start;max-width:min(920px,92%);background:#0C1829;border:1px solid #1A3050;color:#D0E8FF;padding:14px 18px;border-radius:10px 10px 10px 2px;font-size:14px;line-height:1.85;">'
+    return '<div style="align-self:stretch;width:100%;background:#0C1829;border:1px solid #1A3050;color:#D0E8FF;padding:14px 18px;border-radius:10px 10px 10px 2px;font-size:14px;line-height:1.85;box-sizing:border-box;">'
       +m.texto+citHtml+'</div>';
   }).join("");
 }
