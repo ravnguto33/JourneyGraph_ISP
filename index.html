@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Vísent — Lounge de Soluções | JourneyGraph &amp; ITXView ecStepGraph</title>
-<meta name="description" content="Vitrine interativa das soluções Vísent JourneyGraph e ITXView ISP ecStepGraph, em versões HTML e D3.">
+<title>Vísent — Lounge de Soluções | JourneyGraph &amp; STEP ecStepGraph</title>
+<meta name="description" content="Vitrine interativa das soluções Vísent JourneyGraph e STEP ecStepGraph, em versões HTML e D3.">
 <style>
 :root{
   --bg:#09111E;
@@ -148,8 +148,8 @@ body{
 
 <section id="hero">
   <span class="eyebrow">Vitrine de Demonstração</span>
-  <h1>Grafos que revelam a <span>jornada</span> e a <span>interconexão</span> do seu ISP</h1>
-  <p>Duas soluções Vísent construídas sobre o core carrier‑class do CDRView, apresentadas em versão HTML de referência visual e em versão D3.js totalmente interativa.</p>
+  <h1>Grafos que revelam a <span>jornada</span> do assinante e a <span>mobilidade</span> das pessoas</h1>
+  <p>Duas soluções Vísent construídas sobre a base de dados do CDRView e do STEP, apresentadas em versão HTML de referência visual e em versão D3.js totalmente interativa.</p>
   <div class="hero-ctas">
     <a class="btn btn-primary" href="#solutions">Explorar soluções ↓</a>
     <a class="btn btn-ghost" href="journeygraph-d3.html">Abrir JourneyGraph (D3) →</a>
@@ -222,16 +222,16 @@ body{
 
     <article class="solution" id="ecstepgraph">
       <div class="sol-body">
-        <span class="sol-kicker">ITXView ISP Edition</span>
+        <span class="sol-kicker">STEP — Monetização de Dados</span>
         <h3 class="sol-title">ecStep<span class="hi">Graph</span></h3>
-        <p class="sol-desc">Mapeia o caminho de interconexão passo a passo — do ASN de origem aos pontos de peering IX.br, trânsito e destino — com custo, prefixos BGP e latência apurados em cada etapa da rota.</p>
+        <p class="sol-desc">Mapeia a concentração e o deslocamento de pessoas na Grande Florianópolis, segmentados por persona, a partir de uma base sintética de dados móveis anonimizados — revelando fluxos de origem e destino em cada região.</p>
         <div class="sol-tags">
-          <span>BGP</span><span>IX.br</span><span>Custo de trânsito</span><span>Peering</span><span>Otimização de rota</span>
+          <span>Personas</span><span>Fluxos O-D</span><span>Concentração</span><span>Dados anonimizados</span><span>Mobilidade</span>
         </div>
         <ul class="sol-feats">
-          <li>Grafo em etapas do caminho AS a AS até o destino</li>
-          <li>Comparação de custo por Gbps entre trânsito e peering</li>
-          <li>Simulação de otimização de rota e economia potencial</li>
+          <li>Mapa geográfico com concentração por zona e fluxos entre regiões</li>
+          <li>Segmentação por persona (estudante, trabalhador CLT, turista e outras)</li>
+          <li>Filtros por horário de pico e comparação entre zonas</li>
         </ul>
         <div class="sol-ctas">
           <a class="btn btn-sm btn-html" href="ecstepgraph-html.html">Ver versão HTML</a>
@@ -240,35 +240,27 @@ body{
       </div>
       <div class="sol-visual">
         <svg viewBox="0 0 460 300" xmlns="http://www.w3.org/2000/svg">
-          <g stroke="#1A3050" stroke-width="1" stroke-dasharray="3 3">
-            <line x1="40" y1="150" x2="420" y2="150"/>
+          <path d="M300,20 C350,15 390,50 385,100 C382,140 360,180 320,195 C290,205 265,190 260,160 C240,140 245,105 260,80 C265,50 275,25 300,20 Z" fill="#0E2A22" stroke="#1E4A3A" stroke-width="1.2"/>
+          <path d="M110,90 C150,80 185,95 195,120 C200,145 190,165 170,180 C150,195 120,190 105,170 C90,150 95,125 110,90 Z" fill="#152A1C" stroke="#2A4A34" stroke-width="1.2"/>
+          <g fill="none" stroke-linecap="round" stroke-opacity="0.75">
+            <path d="M150,150 Q225,110 270,140" stroke="#E87000" stroke-width="7"/>
+            <path d="M140,175 Q220,190 270,140" stroke="#E87000" stroke-width="4.5"/>
+            <path d="M270,140 Q300,95 320,60" stroke="#3A7FBF" stroke-width="4"/>
+            <path d="M270,140 Q320,155 350,150" stroke="#3ABF7A" stroke-width="3"/>
           </g>
-          <g stroke="#2A5F86" stroke-width="2">
-            <line x1="60" y1="80" x2="150" y2="150"/>
-            <line x1="60" y1="220" x2="150" y2="150"/>
-            <line x1="150" y1="150" x2="250" y2="90"/>
-            <line x1="150" y1="150" x2="250" y2="150"/>
-            <line x1="250" y1="90" x2="360" y2="150"/>
-            <line x1="250" y1="150" x2="360" y2="150"/>
-          </g>
-          <line x1="360" y1="150" x2="420" y2="150" stroke="#E87000" stroke-width="2.5"/>
           <g font-family="Arial" font-size="9" fill="#8ABEDF" text-anchor="middle">
-            <text x="60" y="70">ASN 65010</text>
-            <text x="150" y="175">IX.br SP</text>
-            <text x="250" y="80">Peering</text>
-            <text x="250" y="175">Trânsito</text>
-            <text x="360" y="175">Upstream</text>
-            <text x="420" y="140">Destino</text>
+            <text x="150" y="200">São José</text>
+            <text x="320" y="45">Trindade</text>
+            <text x="355" y="175">Lagoa</text>
           </g>
           <g>
-            <circle cx="60" cy="80" r="6" fill="#12324A" stroke="#2A5F86"/>
-            <circle cx="60" cy="220" r="6" fill="#12324A" stroke="#2A5F86"/>
-            <circle cx="150" cy="150" r="8" fill="#8ABEDF"/>
-            <circle cx="250" cy="90" r="6" fill="#12324A" stroke="#2A5F86"/>
-            <circle cx="250" cy="150" r="6" fill="#12324A" stroke="#2A5F86"/>
-            <circle cx="360" cy="150" r="8" fill="#8ABEDF"/>
-            <circle cx="420" cy="150" r="7" fill="#E87000"/>
+            <circle cx="150" cy="150" r="9" fill="#12324A" stroke="#3A7FBF" stroke-width="2"/>
+            <circle cx="140" cy="175" r="7" fill="#12324A" stroke="#3A7FBF" stroke-width="2"/>
+            <circle cx="270" cy="140" r="14" fill="#12324A" stroke="#3A7FBF" stroke-width="2"/>
+            <circle cx="320" cy="60" r="8" fill="#12324A" stroke="#3A7FBF" stroke-width="2"/>
+            <circle cx="350" cy="150" r="7" fill="#12324A" stroke="#3A7FBF" stroke-width="2"/>
           </g>
+          <text x="270" y="120" font-family="Arial" font-size="10" font-weight="700" fill="#CFE6F5" text-anchor="middle">Centro</text>
         </svg>
       </div>
     </article>
@@ -307,7 +299,7 @@ body{
       <span class="brand-title">Vísent — <span class="brand-accent">Data Insights</span></span>
     </div>
     <div id="footer-meta">
-      <div>JourneyGraph · ITXView ISP ecStepGraph</div>
+      <div>JourneyGraph · STEP ecStepGraph</div>
       <div>Ambiente de demonstração — dados fictícios</div>
     </div>
   </div>
