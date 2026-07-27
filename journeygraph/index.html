@@ -445,7 +445,8 @@ body.chrome-light #topbar-logo img { filter:none !important; }
   </div>
   <div style="flex:1;display:flex;justify-content:center;min-width:0;">
     <div id="nav-tabs">
-      <button class="nav-btn active" data-screen="graph">&#9672; Dígrafo</button>
+      <button class="nav-btn active" data-screen="overview">&#128202; Visão Geral</button>
+      <button class="nav-btn" data-screen="graph">&#9672; Dígrafo</button>
       <button class="nav-btn" data-screen="charts">&#9650; Gráficos</button>
       <button class="nav-btn" data-screen="insights">&#128202; Insights</button>
       <button class="nav-btn" data-screen="personas">&#128100; Personas</button>
@@ -554,8 +555,13 @@ body.chrome-light #topbar-logo img { filter:none !important; }
   </div>
 
   <div id="center">
+    <!-- TELA 0: VISÃO GERAL -->
+    <div class="screen active" id="screen-overview" style="padding:16px;overflow-y:auto;">
+      <div id="overview-content"></div>
+    </div>
+
     <!-- TELA 1: DÍGRAFO -->
-    <div class="screen active" id="screen-graph">
+    <div class="screen" id="screen-graph">
       <svg id="graph-svg"></svg>
       <div class="tooltip" id="tooltip"></div>
       <div id="edge-info-box" style="display:none;position:absolute;top:12px;right:12px;background:#06101C;border:1px solid #E87000;border-radius:8px;padding:10px 14px;min-width:200px;max-width:280px;pointer-events:none;z-index:20;box-shadow:0 4px 16px rgba(0,0,0,0.6)">
@@ -724,7 +730,7 @@ var RAW={"nodes":[{"id":"streaming_video","label":"Streaming Vídeo","color":"#E
    qualquer comparação direta tipo S.seg==="x" foi substituída por essas
    funções. */
 var S = {
-  screen:     "graph",
+  screen:     "overview",
   seg:        ["all"],
   week:       ["all"],
   mode:       "cat",
@@ -4193,10 +4199,103 @@ function _assistSendFrom(idPrefix){
   if(input2) input2.focus();
 }
 
+/* ═══ VISÃO GERAL ════════════════════════════════════════════════════════════
+   Painel de resumo com indicadores já calculados pelo pipeline (não introduz
+   nenhum dado novo): assinantes, alertas (RAW.alerts_summary/alerts_isp),
+   churn (RAW.churn_data), sigma topológico (RAW.sigma_weekly) e ranking de
+   categorias por volume (nodeValues()/RAW.nodes, mesma base do Dígrafo). */
+function renderOverview(){
+  var el=document.getElementById("overview-content");
+  if(!el) return;
+
+  var nSubs=RAW.metadata.n_subscribers||0;
+  var cd=RAW.churn_data||{};
+  var cs=cd.summary||{n_alto:0,n_medio:0,n_total:0};
+  var emRisco=(cs.n_alto||0)+(cs.n_medio||0);
+  var alSum=RAW.alerts_summary||{normal:0,atencao:0,excecao:0,critico:0};
+  var alAbertos=(alSum.critico||0)+(alSum.excecao||0)+(alSum.atencao||0);
+  var sigmas=RAW.sigma_weekly||[];
+  var lastSigma=sigmas.length?sigmas[sigmas.length-1]:null;
+  function sigColor(s){return s<0.02?"#27AE60":s<0.05?"#E87000":"#E84040";}
+  function sigLabel(s){return s<0.02?"Estável":s<0.05?"Moderada":"Alta";}
+
+  var html='';
+
+  html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">'
+    +'<div class="mc" style="padding:12px 14px;"><div class="mc-lbl">Assinantes monitorados</div>'
+      +'<div class="mc-val" style="font-size:24px;">'+fmtN(nSubs)+'</div>'
+      +'<div class="mc-sub">base sintética de demonstração</div></div>'
+    +'<div class="mc" style="padding:12px 14px;"><div class="mc-lbl">Alertas abertos</div>'
+      +'<div class="mc-val" style="font-size:24px;color:'+(alSum.critico>0?"#E84040":"#F0F8FF")+'">'+alAbertos+'</div>'
+      +'<div class="mc-sub">'+(alSum.critico||0)+' crítico &middot; '+(alSum.excecao||0)+' exceção &middot; '+(alSum.atencao||0)+' atenção</div></div>'
+    +'<div class="mc" style="padding:12px 14px;"><div class="mc-lbl">Assinantes em risco de churn</div>'
+      +'<div class="mc-val" style="font-size:24px;color:'+(emRisco>0?"#E87000":"#F0F8FF")+'">'+fmtN(emRisco)+'</div>'
+      +'<div class="mc-sub">'+(cs.n_alto||0)+' risco alto &middot; '+(cs.n_medio||0)+' médio</div></div>'
+    +'<div class="mc" style="padding:12px 14px;"><div class="mc-lbl">Estabilidade (&#963; topológico)</div>'
+      +'<div class="mc-val" style="font-size:24px;color:'+(lastSigma?sigColor(lastSigma.sigma):"#F0F8FF")+'">'+(lastSigma?lastSigma.sigma.toFixed(3):"—")+'</div>'
+      +'<div class="mc-sub">'+(lastSigma?sigLabel(lastSigma.sigma):"sem dado")+' &middot; última semana avaliada</div></div>'
+    +'</div>';
+
+  html+='<div style="display:grid;grid-template-columns:1.1fr 1fr;gap:16px;align-items:start;">';
+
+  var nb=nodeValues();
+  var totalVol=Object.values(nb).reduce(function(a,b){return a+b;},0);
+  var topNodes=(RAW.nodes||[]).filter(function(n){return n.id!=="other"&&(nb[n.id]||0)>0;})
+    .sort(function(a,b){return (nb[b.id]||0)-(nb[a.id]||0);}).slice(0,6);
+  html+='<div class="ins-card"><div class="ins-title">&#128200; Top Categorias por Volume</div>';
+  if(!topNodes.length){
+    html+='<div style="font-size:12px;color:#3A6080;">Sem dados no filtro atual.</div>';
+  } else {
+    topNodes.forEach(function(n){
+      var v=nb[n.id]||0, pct=totalVol>0?Math.round(v/totalVol*100):0;
+      html+='<div class="ins-row"><span class="ins-row-label"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+n.color+';margin-right:6px;"></span>'+n.label+'</span>'
+        +'<div class="ins-bar-wrap" style="width:100px"><div class="ins-bar-fill" style="width:'+pct+'%;background:'+n.color+'"></div></div>'
+        +'<span class="ins-val">'+pct+'%</span></div>';
+    });
+  }
+  html+='<div style="margin-top:10px;"><a href="#" onclick="document.querySelector(\'[data-screen=graph]\').click();return false;" style="font-size:11px;color:#E87000;text-decoration:none;">Ver dígrafo completo &#8594;</a></div></div>';
+
+  var atRisk=(cd.at_risk||[]).slice().sort(function(a,b){return (b.churn_score||0)-(a.churn_score||0);}).slice(0,5);
+  html+='<div class="ins-card"><div class="ins-title">&#9888; Top Assinantes em Risco</div>';
+  if(!atRisk.length){
+    html+='<div style="font-size:12px;color:#3A6080;">Sem assinantes em risco no filtro atual.</div>';
+  } else {
+    atRisk.forEach(function(r){
+      var clr=r.risk==="alto"?"#E84040":r.risk==="medio"?"#E87000":"#27AE60";
+      html+='<div class="ins-row"><span class="ins-row-label">'+r.sub_id+' &middot; <span style="color:#567898">'+(r.cidade||r.zona||"—")+'</span></span>'
+        +'<span class="ins-val" style="color:'+clr+'">'+r.churn_score+'</span></div>';
+    });
+  }
+  html+='<div style="margin-top:10px;"><a href="#" onclick="document.querySelector(\'[data-screen=insights]\').click();return false;" style="font-size:11px;color:#E87000;text-decoration:none;">Ver painel de Insights &#8594;</a></div></div>';
+
+  html+='</div>';
+
+  var recentAlerts=(RAW.alerts_isp||[]).slice().sort(function(a,b){
+    var order={critico:0,excecao:1,atencao:2,normal:3};
+    return (order[a.severidade]||9)-(order[b.severidade]||9);
+  }).slice(0,5);
+  html+='<div class="ins-card" style="margin-top:16px;"><div class="ins-title">&#9888; Alertas Recentes</div>';
+  if(!recentAlerts.length){
+    html+='<div style="font-size:12px;color:#3A6080;">Nenhum alerta ativo.</div>';
+  } else {
+    recentAlerts.forEach(function(a){
+      var c=_sevColor(a.severidade);
+      html+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #1A3050;cursor:pointer;" onclick="document.querySelector(\'[data-screen=alerts]\').click();_alertState.open=\''+a.id+'\';renderAlerts();">'
+        +'<div style="min-width:0;"><div style="font-size:12.5px;color:#F0F8FF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+a.objeto+' &middot; '+a.indicador+'</div>'
+        +'<div style="font-size:10px;color:#567898;">'+a.camada+'</div></div>'
+        +'<span style="font-size:10px;font-weight:700;color:'+c+';background:'+c+'1A;border:1px solid '+c+'55;border-radius:10px;padding:2px 8px;flex-shrink:0;">'+_sevLabel(a.severidade)+'</span></div>';
+    });
+  }
+  html+='<div style="margin-top:10px;"><a href="#" onclick="document.querySelector(\'[data-screen=alerts]\').click();return false;" style="font-size:11px;color:#E87000;text-decoration:none;">Ver todos os alertas &#8594;</a></div></div>';
+
+  el.innerHTML=html;
+}
+
 /* ═══ REFRESH ALL ════════════════════════════════════════════════════════════ */
 function refreshAll(){
   applyBodyClass();
-  if(S.screen==="graph"){renderGraph();renderEdgePanel();renderSigmaBar();renderMetrics();}
+  if(S.screen==="overview"){renderOverview();}
+  else if(S.screen==="graph"){renderGraph();renderEdgePanel();renderSigmaBar();renderMetrics();}
   else if(S.screen==="charts"){renderCharts();}
   else if(S.screen==="insights"){renderInsights();}
   else if(S.screen==="personas"){renderPersonas();}
@@ -4339,6 +4438,7 @@ applyBodyClass();
 renderSigmaBar();
 renderGraph();
 renderEdgePanel();
+renderOverview();
 
 /* ════════════════════════════════════════════════════════════════════════════
    UPLOAD OVERLAY — Carregar e processar CSVs diretamente no browser
