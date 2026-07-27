@@ -4274,7 +4274,8 @@ function renderOverview(){
     var order={critico:0,excecao:1,atencao:2,normal:3};
     return (order[a.severidade]||9)-(order[b.severidade]||9);
   }).slice(0,5);
-  html+='<div class="ins-card" style="margin-top:16px;"><div class="ins-title">&#9888; Alertas Recentes</div>';
+  html+='<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:start;margin-top:16px;">';
+  html+='<div class="ins-card"><div class="ins-title">&#9888; Alertas Recentes</div>';
   if(!recentAlerts.length){
     html+='<div style="font-size:12px;color:#3A6080;">Nenhum alerta ativo.</div>';
   } else {
@@ -4287,8 +4288,23 @@ function renderOverview(){
     });
   }
   html+='<div style="margin-top:10px;"><a href="#" onclick="document.querySelector(\'[data-screen=alerts]\').click();return false;" style="font-size:11px;color:#E87000;text-decoration:none;">Ver todos os alertas &#8594;</a></div></div>';
+  html+='<div id="overview-persona-pie"></div>';
+  html+='</div>';
 
   el.innerHTML=html;
+
+  /* Pizza de participação das personas — mesma fonte/cores usadas na aba
+     Personas (RAW.persona_summary + _drawPieCard), reaproveitada aqui em
+     vez de recalculada, para os dois lugares nunca divergirem. */
+  var pieHost=document.getElementById("overview-persona-pie");
+  if(pieHost){
+    var PC_OV=["#E50914","#1DB954","#1877F2","#9B59B6","#0078D4","#E87000","#2ECC71"];
+    var pieSrcOv=(RAW.persona_summary||[]).map(function(p,i){return{label:p.persona_label,color:PC_OV[i%7],value:p.n_subs||0};})
+      .filter(function(d){return d.value>0;});
+    var pieDivOv=_drawPieCard(pieSrcOv,"&#127760; Participação das Personas","% do total de assinantes");
+    if(pieDivOv) pieHost.appendChild(pieDivOv);
+    else pieHost.outerHTML='<div class="ins-card"><div class="ins-title">&#127760; Participação das Personas</div><div style="font-size:12px;color:#3A6080;">Sem dados de personas.</div></div>';
+  }
 }
 
 /* ═══ REFRESH ALL ════════════════════════════════════════════════════════════ */
