@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Égide Vita — Fenotipagem Digital para Saúde</title>
+<link rel="icon" href="../assets/logo-visent.png">
+<script src="./vendor/d3.v7.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#09111E;color:#E0EAF5;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+a{color:inherit;}
+
+/* topbar */
+#topbar{background:#0C1829;border-bottom:1px solid #1A3050;padding:6px 16px;display:flex;align-items:center;gap:14px;flex-shrink:0;min-height:52px;}
+#topbar-logo img{height:34px;width:auto;filter:brightness(0) invert(1);}
+.brand-tag{font-size:10px;color:#8ABEDF;letter-spacing:.10em;text-transform:uppercase;}
+.brand-title{font-size:19px;font-weight:700;color:#F0F8FF;}
+.brand-accent{color:#4FD1A5;}
+#nav-tabs{display:flex;gap:3px;background:#050C16;padding:3px;border-radius:8px;margin-left:18px;}
+.nav-btn{background:transparent;border:none;color:#8ABEDF;font-size:13px;font-weight:600;padding:6px 16px;border-radius:6px;cursor:pointer;font-family:Arial,sans-serif;transition:all .15s;white-space:nowrap;}
+.nav-btn:hover{background:#0D1829;color:#E0F4FF;}
+.nav-btn.active{background:#4FD1A5;color:#062018;}
+#cohort-select{margin-left:auto;background:#0A1422;border:1px solid #2A4A6F;color:#CFE9FF;font-size:13px;font-family:Arial,sans-serif;padding:7px 12px;border-radius:7px;cursor:pointer;}
+#back-lounge{font-size:12px;color:#8ABEDF;text-decoration:none;border:1px solid #2A4A6F;padding:6px 12px;border-radius:7px;white-space:nowrap;}
+#back-lounge:hover{border-color:#4FD1A5;color:#4FD1A5;}
+
+/* disclaimer bar — RF-09/RI-02, sempre visível, não removível pelo usuário */
+#disclaimer{background:#241A08;border-bottom:1px solid #6B4A12;color:#F0C97A;font-size:11.5px;padding:6px 16px;flex-shrink:0;line-height:1.4;}
+#disclaimer b{color:#FFD98A;}
+
+#main{flex:1;overflow:auto;padding:18px 22px;}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+.card{background:#0C1829;border:1px solid #1A3050;border-radius:9px;padding:14px 16px;}
+.card-lbl{font-size:10px;color:#8ABEDF;text-transform:uppercase;letter-spacing:.07em;}
+.card-val{font-size:24px;font-weight:700;color:#F0F8FF;line-height:1.3;margin-top:2px;}
+.card-sub{font-size:11px;color:#9ACCE0;margin-top:3px;}
+.section-title{font-size:13px;font-weight:700;color:#CFE9FF;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.05em;}
+.panel{background:#0C1829;border:1px solid #1A3050;border-radius:9px;padding:14px 16px;margin-bottom:14px;}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #16283F;font-size:12.5px;}
+.row:last-child{border-bottom:none;}
+.badge{font-size:10px;font-weight:700;padding:2px 9px;border-radius:9px;white-space:nowrap;}
+.two-col{display:grid;grid-template-columns:1.15fr 1fr;gap:16px;align-items:start;}
+table.ref{width:100%;border-collapse:collapse;font-size:12px;}
+table.ref th{background:#12243A;color:#CFE9FF;text-align:left;padding:6px 9px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;}
+table.ref td{padding:6px 9px;border-bottom:1px solid #16283F;color:#DCEEFB;}
+table.ref tr:hover td{background:#0F1F32;}
+
+/* dígrafo */
+#graph-wrap{position:relative;background:#050C16;border:1px solid #1A3050;border-radius:10px;height:520px;overflow:hidden;}
+#tooltip{position:absolute;background:#0C1829;border:1px solid #2A4A6F;border-radius:6px;padding:8px 11px;font-size:11.5px;color:#DCEEFB;pointer-events:none;display:none;max-width:260px;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.4);}
+.role-nucleo{fill:#4FD1A5;}
+.role-ponte{fill:#E87000;}
+.role-ancora{fill:#3B82C4;}
+.role-satelite{fill:#6B7C93;}
+.role-absorb-crise{fill:#E84040;}
+.role-absorb-estab{fill:#2E9E5B;}
+
+/* alertas */
+.sev-critico{color:#E84040;background:#E8404022;border:1px solid #E8404055;}
+.sev-atencao{color:#E87000;background:#E8700022;border:1px solid #E8700055;}
+.sev-normal{color:#4FD1A5;background:#4FD1A522;border:1px solid #4FD1A555;}
+.btn{display:inline-block;font-size:11.5px;font-weight:700;padding:5px 12px;border-radius:6px;text-decoration:none;background:#4FD1A5;color:#062018;border:none;cursor:pointer;font-family:inherit;}
+.btn-ghost{background:transparent;border:1px solid #2A4A6F;color:#9ACCE0;}
+select.status-sel{background:#0A1422;border:1px solid #2A4A6F;color:#CFE9FF;font-size:11px;padding:3px 6px;border-radius:5px;}
+
+/* personas */
+.persona-card{background:#0C1829;border:1px solid #1A3050;border-radius:9px;padding:14px 16px;margin-bottom:10px;}
+.persona-name{font-size:14px;font-weight:700;color:#F0F8FF;}
+.persona-desc{font-size:12px;color:#9ACCE0;margin-top:4px;line-height:1.5;}
+
+/* assistente */
+#assist-box{display:flex;gap:8px;margin-bottom:14px;}
+#assist-input{flex:1;background:#0A1422;border:1px solid #2A4A6F;color:#F0F8FF;padding:9px 12px;border-radius:8px;font-size:13px;font-family:inherit;}
+.assist-msg{background:#0C1829;border:1px solid #1A3050;border-radius:9px;padding:12px 14px;margin-bottom:10px;font-size:13px;line-height:1.65;}
+.assist-cite{font-size:10.5px;color:#567898;border-left:2px solid #4FD1A5;padding-left:8px;margin-top:8px;}
+.assist-cite.normativo{border-left-color:#E87000;}
+
+.sparkline{display:flex;align-items:flex-end;gap:2px;height:34px;}
+.spk-bar{width:8px;background:#3B82C4;border-radius:2px 2px 0 0;}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <a id="topbar-logo" href="#" onclick="return false;"><img src="../assets/logo-visent.png" alt="Vísent"></a>
+  <div>
+    <div class="brand-tag">Vísent · KDD Cognitivo Soberano — Domínio Saúde</div>
+    <div class="brand-title">Égide <span class="brand-accent">Vita</span></div>
+  </div>
+  <div id="nav-tabs">
+    <button class="nav-btn active" data-tab="overview">Visão Geral</button>
+    <button class="nav-btn" data-tab="digraph">Dígrafo Sindrômico</button>
+    <button class="nav-btn" data-tab="personas">Personas de Risco</button>
+    <button class="nav-btn" data-tab="alerts">Alertas</button>
+    <button class="nav-btn" data-tab="assistant">Assistente</button>
+  </div>
+  <select id="cohort-select"></select>
+  <a id="back-lounge" href="../index.html">← Portfólio Vísent</a>
+</div>
+
+<div id="disclaimer">
+  <b>Protótipo v0.1 — dado 100% sintético.</b> Indicador comportamental probabilístico agregado — <b>não constitui diagnóstico clínico individual</b>.
+  A probabilidade de desfecho (Crise/Estabilização) é uma propriedade estrutural do grafo, não uma previsão sobre uma pessoa real. Estado "Crise" exige sempre validação e encaminhamento humano — nunca decisão automática.
+</div>
+
+<div id="main"></div>
+<div id="tooltip"></div>
+
+<script>
+/* =====================================================================
+   1. MOTOR MATEMÁTICO — cadeia de Markov absorvente com dois desfechos
+      (Crise / Estabilização), centralidade de intermediação (Brandes),
+      HHI e divergência de Jensen-Shannon (σ). Mesmo padrão de honestidade
+      metodológica do Tech Reference do JourneyGraph: nada aqui é
+      hardcoded como resultado — é calculado a partir da matriz de
+      transição em tempo de execução no navegador.
+===================================================================== */
+const NODE_IDS = ["vamping","verificacao","binge","apostas","isolamento","dependencia_ia","burnout"];
+const NODE_META = {
+  vamping:        { label:"Vamping", desc:"Uso digital crítico no período noturno (22h–6h)" },
+  verificacao:    { label:"Verificação Compulsiva", desc:"Sessões breves e frequentes que ativam circuitos dopaminérgicos" },
+  binge:          { label:"Binge Watching", desc:"Sessões prolongadas ininterruptas de streaming/gaming" },
+  apostas:        { label:"Apostas Online (Bets)", desc:"Sessões de apostas esportivas/jogo online" },
+  isolamento:     { label:"Isolamento (IRE)", desc:"Retração do raio de deslocamento físico associada a isolamento social" },
+  dependencia_ia: { label:"Dependência de IA Generativa", desc:"Interação compulsiva com assistentes conversacionais, vínculo parassocial" },
+  burnout:        { label:"Burnout / Presenteísmo Digital", desc:"Esgotamento por conectividade compulsória fora do expediente" },
+};
+const ABSORBING_IDS = ["crise","estabilizacao"];
+const ABSORBING_META = {
+  crise: { label:"Crise", desc:"Estado absorvente grave — populado apenas por sinal validado externamente (triagem humana), nunca inferido isoladamente pelo grafo" },
+  estabilizacao: { label:"Estabilização", desc:"Desfecho de resolução espontânea/assistida — redução do padrão de risco sem escalonamento" },
+};
+// Backbone estrutural (afinidade de transição direcionada), fundamentado na
+// literatura discutida no Relatório de Impacto Vísent 2026 e no ERS do produto.
+const BASE_AFFINITY = {
+  vamping:        { verificacao:0.32, binge:0.28, isolamento:0.14, burnout:0.09, apostas:0.05, crise:0.02, estabilizacao:0.06 },
+  verificacao:    { vamping:0.20, binge:0.15, dependencia_ia:0.23, isolamento:0.10, crise:0.02, estabilizacao:0.08 },
+  binge:          { isolamento:0.28, vamping:0.19, burnout:0.10, crise:0.02, estabilizacao:0.05 },
+  apostas:        { isolamento:0.25, vamping:0.13, burnout:0.09, crise:0.08, estabilizacao:0.03 },
+  isolamento:     { dependencia_ia:0.33, vamping:0.14, crise:0.10, estabilizacao:0.02 },
+  dependencia_ia: { isolamento:0.24, verificacao:0.14, crise:0.05, estabilizacao:0.03 },
+  burnout:        { vamping:0.22, verificacao:0.13, apostas:0.08, crise:0.04, estabilizacao:0.05 },
+};
+
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function buildWeekMatrix(escalation){
+  const ids = [...NODE_IDS, ...ABSORBING_IDS];
+  const n = ids.length;
+  const P = Array.from({length:n}, () => new Array(n).fill(0));
+  NODE_IDS.forEach((src, i) => {
+    const row = BASE_AFFINITY[src];
+    const scaledEntries = Object.entries(row).map(([dst, w]) => [dst, w * (escalation[src] || 1)]);
+    let offSum = scaledEntries.reduce((s,[,w]) => s+w, 0);
+    const cap = 0.95; // mantém a linha estocástica válida sob qualquer escalonamento
+    const scale = offSum > cap ? cap/offSum : 1;
+    offSum = 0;
+    scaledEntries.forEach(([dst,w]) => {
+      const scaled = w*scale;
+      P[i][ids.indexOf(dst)] = scaled;
+      offSum += scaled;
+    });
+    P[i][i] = Math.max(0.05, 1 - offSum);
+  });
+  ABSORBING_IDS.forEach((id) => { const idx = ids.indexOf(id); P[idx][idx] = 1; });
+  return { ids, P };
+}
+function matInverse(M){
+  const n = M.length;
+  const A = M.map((row,i) => [...row, ...Array.from({length:n},(_,j)=> i===j?1:0)]);
+  for (let col=0; col<n; col++){
+    let piv = col;
+    for (let r=col+1;r<n;r++) if (Math.abs(A[r][col])>Math.abs(A[piv][col])) piv=r;
+    [A[col],A[piv]] = [A[piv],A[col]];
+    const pv = A[col][col];
+    for (let c=0;c<2*n;c++) A[col][c] /= pv;
+    for (let r=0;r<n;r++){
+      if (r===col) continue;
+      const f = A[r][col];
+      for (let c=0;c<2*n;c++) A[r][c] -= f*A[col][c];
+    }
+  }
+  return A.map(row => row.slice(n));
+}
+function matmul(A,B){
+  const n=A.length, k=B.length, m=B[0].length;
+  const C = Array.from({length:n}, ()=> new Array(m).fill(0));
+  for (let i=0;i<n;i++) for (let j=0;j<m;j++) for (let l=0;l<k;l++) C[i][j]+=A[i][l]*B[l][j];
+  return C;
+}
+// Teoria de cadeias de Markov absorventes com desfechos competitivos (Crise / Estabilização):
+// N = (I-Q)^-1; B = N·R => probabilidade de cada nó terminar em cada desfecho (linhas somam 1).
+function computeAbsorption(P, nTransient, nAbsorbing){
+  const Q = P.slice(0,nTransient).map(row => row.slice(0,nTransient));
+  const R = P.slice(0,nTransient).map(row => row.slice(nTransient, nTransient+nAbsorbing));
+  const I = Array.from({length:nTransient}, (_,i)=>Array.from({length:nTransient},(_,j)=> i===j?1:0));
+  const ImQ = I.map((row,i)=>row.map((v,j)=> v - Q[i][j]));
+  const N = matInverse(ImQ);
+  const B = matmul(N, R);
+  const steps = N.map(row => row.reduce((s,v)=> s+v, 0));
+  return { N, B, steps };
+}
+function renormalizeRows(Q){
+  return Q.map(row => { const s = row.reduce((a,b)=>a+b,0); return row.map(v => s>0 ? v/s : 0); });
+}
+function stationaryDistribution(Qrows, iters=300){
+  const n = Qrows.length;
+  let v = new Array(n).fill(1/n);
+  for (let k=0;k<iters;k++){
+    const nv = new Array(n).fill(0);
+    for (let i=0;i<n;i++) for (let j=0;j<n;j++) nv[j] += v[i]*Qrows[i][j];
+    const s = nv.reduce((a,b)=>a+b,0);
+    v = nv.map(x=>x/s);
+  }
+  return v;
+}
+function jsd(p,q){
+  const m = p.map((v,i)=>(v+q[i])/2);
+  function kl(a,b){ let s=0; for (let i=0;i<a.length;i++){ if(a[i]>0) s += a[i]*Math.log2(a[i]/b[i]); } return s; }
+  return 0.5*kl(p,m) + 0.5*kl(q,m);
+}
+function hhi(weights){
+  const s = weights.reduce((a,b)=>a+b,0);
+  return weights.reduce((acc,w)=> acc + Math.pow(100*w/s,2), 0);
+}
+function betweenness(Qn){
+  const n = Qn.length;
+  const dist = Qn.map(row => row.map(w => w>1e-6 ? 1/w : Infinity));
+  const CB = new Array(n).fill(0);
+  for (let s=0;s<n;s++){
+    const d = new Array(n).fill(Infinity); d[s]=0;
+    const sigma = new Array(n).fill(0); sigma[s]=1;
+    const pred = Array.from({length:n},()=>[]);
+    const visited = new Array(n).fill(false);
+    const order = [];
+    for (let iter=0; iter<n; iter++){
+      let u=-1, best=Infinity;
+      for (let i=0;i<n;i++) if(!visited[i] && d[i]<best){ best=d[i]; u=i; }
+      if (u===-1) break;
+      visited[u]=true; order.push(u);
+      for (let v=0; v<n; v++){
+        if (dist[u][v]===Infinity) continue;
+        const alt = d[u]+dist[u][v];
+        if (alt < d[v]-1e-9){ d[v]=alt; sigma[v]=sigma[u]; pred[v]=[u]; }
+        else if (Math.abs(alt-d[v])<1e-9){ sigma[v]+=sigma[u]; pred[v].push(u); }
+      }
+    }
+    const delta = new Array(n).fill(0);
+    for (let i=order.length-1;i>=0;i--){
+      const w = order[i];
+      for (const v of pred[w]) delta[v] += (sigma[v]/sigma[w]) * (1+delta[w]);
+      if (w!==s) CB[w]+=delta[w];
+    }
+  }
+  return CB;
+}
+function detectCycles(P, threshold){
+  const cycles = [];
+  for (let i=0;i<NODE_IDS.length;i++) for (let j=i+1;j<NODE_IDS.length;j++){
+    if (P[i][j]>threshold && P[j][i]>threshold) cycles.push([NODE_IDS[i], NODE_IDS[j], P[i][j], P[j][i]]);
+  }
+  return cycles;
+}
+
+/* ---- referência estrutural do backbone (igual para todos os cohorts): ---- */
+const BACKBONE = buildWeekMatrix({});
+const BACKBONE_ABS = computeAbsorption(BACKBONE.P, 7, 2);
+const NODE_ROLE_REF = (() => {
+  const Q = BACKBONE.P.slice(0,7).map(r=>r.slice(0,7));
+  const Qn = renormalizeRows(Q);
+  const stat = stationaryDistribution(Qn);
+  const cb = betweenness(Qn);
+  const medCB = [...cb].sort((a,b)=>a-b)[Math.floor(cb.length/2)];
+  const medW = [...stat].sort((a,b)=>a-b)[Math.floor(stat.length/2)];
+  return NODE_IDS.map((id,i) => {
+    let role;
+    if (cb[i]>=medCB && stat[i]>=medW) role = "nucleo";
+    else if (cb[i]>=medCB) role = "ponte";
+    else if (stat[i]>=medW) role = "ancora";
+    else role = "satelite";
+    return { id, cb:cb[i], weight:stat[i], role };
+  });
+})();
+const ROLE_LABEL = { nucleo:"Núcleo", ponte:"Ponte", ancora:"Âncora", satelite:"Satélite" };
+
+/* =====================================================================
+   2. COHORTS SINTÉTICOS — três contextos de consentimento distintos (RF-25)
+===================================================================== */
+const COHORTS = [
+  {
+    id: "saude_publica", nome: "Município Alfa", contexto: "Saúde Pública",
+    populacao: "12.400 hab. (13–19 anos), cohort agregado anônimo",
+    seed: 11,
+    driftFn: (id, w, rng) => {
+      const risky = (id==="binge" || id==="apostas" || id==="verificacao");
+      return risky ? (1 + w*0.05) : 1 + (rng()-0.5)*0.10;
+    }
+  },
+  {
+    id: "corporativo", nome: "Organização Beta", contexto: "Corporativo · NR-1 / GRO-PGR",
+    populacao: "850 colaboradores, consentimento coletivo ativo",
+    seed: 23,
+    driftFn: (id, w, rng) => {
+      const risky = (id==="burnout" || id==="verificacao" || id==="vamping");
+      return risky ? (1 + w*0.035) : 1 + (rng()-0.5)*0.06;
+    }
+  },
+  {
+    id: "escolar", nome: "Turma Gama", contexto: "Parental/Escolar · ECA Digital",
+    populacao: "210 alunos, consentimento do responsável legal",
+    seed: 42,
+    driftFn: (id, w, rng) => {
+      const risky = (id==="isolamento" || id==="dependencia_ia" || id==="vamping");
+      return risky ? (1 + w*0.11) : 1 + (rng()-0.5)*0.08;
+    }
+  },
+];
+const N_WEEKS = 8;
+
+function buildCohortSeries(cohort){
+  const rng = mulberry32(cohort.seed);
+  const weeks = [];
+  for (let w=0; w<N_WEEKS; w++){
+    const escalation = {};
+    // jitter pequeno também nos nós "de risco" evita empates artificiais entre eles
+    NODE_IDS.forEach(id => { escalation[id] = Math.max(0.5, cohort.driftFn(id, w, rng) * (1 + (rng()-0.5)*0.03)); });
+    const { P } = buildWeekMatrix(escalation);
+    const Q = P.slice(0,7).map(r=>r.slice(0,7));
+    const Qn = renormalizeRows(Q);
+    // Prevalência observada = escalonamento normalizado (proxy direto de "quanto este
+    // comportamento está ativo no cohort esta semana" — em produção viria do dado real).
+    // A matriz P/Qn é reservada para topologia (arestas do dígrafo, ciclos de reforço),
+    // não para a prevalência — evita que o atrator estrutural do backbone (isolamento
+    // <-> dependência de IA) domine artificialmente a leitura de todos os cohorts.
+    const rawStat = NODE_IDS.map(id => escalation[id]);
+    const sRaw = rawStat.reduce((a,b)=>a+b,0);
+    const stat = rawStat.map(v=>v/sRaw);
+    const cb = betweenness(Qn);
+    const cycles = detectCycles(P, 0.10);
+    const aggregateRisk = stat.reduce((s,v,i)=> s + v*BACKBONE_ABS.B[i][0], 0); // P(crise) ponderada
+    weeks.push({ w, P, Qn, stat, cb, cycles, aggregateRisk });
+  }
+  weeks.forEach((wk,i) => { wk.sigma = i>0 ? jsd(weeks[i-1].stat, wk.stat) : 0; wk.hhi = hhi(wk.stat); });
+  return weeks;
+}
+const COHORT_DATA = {};
+COHORTS.forEach(c => { COHORT_DATA[c.id] = buildCohortSeries(c); });
+
+/* ---- alertas derivados (RF-18): sigma alto OU risco agregado crítico ---- */
+const SIGMA_TH = { moderado:0.01, alto:0.03 };
+const RISK_TH = { atencao:0.565, critico:0.585 };
+function sevColor(sev){ return sev==="critico"?"#E84040":sev==="atencao"?"#E87000":"#4FD1A5"; }
+function sevLabel(sev){ return sev==="critico"?"Crítico":sev==="atencao"?"Atenção":"Normal"; }
+
+function buildAlerts(){
+  const alerts = [];
+  COHORTS.forEach(c => {
+    const weeks = COHORT_DATA[c.id];
+    const last = weeks[weeks.length-1];
+    let sev = "normal";
+    const reasons = [];
+    if (last.aggregateRisk >= RISK_TH.critico){ sev="critico"; reasons.push("risco agregado de agravamento acima do limiar crítico"); }
+    else if (last.aggregateRisk >= RISK_TH.atencao){ sev = sev==="critico"?sev:"atencao"; reasons.push("risco agregado de agravamento em ascensão"); }
+    if (last.sigma >= SIGMA_TH.alto){ sev="critico"; reasons.push("σ (Jensen-Shannon) indica alta variação estrutural na última semana"); }
+    else if (last.sigma >= SIGMA_TH.moderado){ sev = sev==="critico"?sev:"atencao"; reasons.push("σ indica variação moderada"); }
+    if (last.cycles.length>=3){ reasons.push(last.cycles.length+" ciclos de reforço ativos (topologia auto-sustentada)"); }
+    if (sev !== "normal"){
+      const topNodeIdx = last.stat.indexOf(Math.max(...last.stat));
+      alerts.push({
+        id: c.id+"-"+last.w, cohort:c.nome, contexto:c.contexto, severidade: sev,
+        objeto: NODE_META[NODE_IDS[topNodeIdx]].label, semana: last.w,
+        motivo: reasons.join("; "),
+        risco: last.aggregateRisk, sigma: last.sigma,
+        status: "Novo",
+      });
+    }
+  });
+  return alerts.sort((a,b)=> ({critico:0,atencao:1,normal:2}[a.severidade]) - ({critico:0,atencao:1,normal:2}[b.severidade]));
+}
+const ALERTS = buildAlerts();
+
+/* =====================================================================
+   3. ASSISTENTE — corpus segregado científico/normativo (RF-21/RF-22),
+      busca por palavra-chave com citação obrigatória (sem inferência real
+      de LLM — igual em espírito ao Assistente do JourneyGraph, mas com
+      corpus próprio deste produto).
+===================================================================== */
+const ASSIST_CORPUS = [
+  { corpus:"eFenotipagem", titulo:"Vamping", fonte:"Oliveira et al., 2023 — Rev. Bras. Psiquiatria", texto:"Intensidade de uso digital crítico no período noturno (22h–6h). Associado à supressão de melatonina, fragmentação do sono REM e fadiga diurna severa." },
+  { corpus:"eFenotipagem", titulo:"Verificação Compulsiva", fonte:"Santos, 2022 — Dissertação UFRJ", texto:"Frequência e brevidade de sessões que ativam circuitos dopaminérgicos, associada à nomofobia e à arquitetura de notificações push." },
+  { corpus:"eFenotipagem", titulo:"Binge Watching", fonte:"Lima, 2021 — Tese USP", texto:"Sessões prolongadas e ininterruptas de streaming/gaming, associadas a mecânicas de recompensa variável e habituação dopaminérgica." },
+  { corpus:"eFenotipagem", titulo:"Índice de Retração Espacial (IRE)", fonte:"Relatório de Impacto Vísent, 2026, seção 7.2", texto:"Mede a variação do raio de deslocamento físico (Cell ID), identificando isolamento social crônico associado a quadros depressivos." },
+  { corpus:"eFenotipagem", titulo:"Dependência de IA Generativa", fonte:"Relatório de Impacto Vísent, 2026, seção 8", texto:"Interação compulsiva com assistentes conversacionais associada a vínculo parassocial, erosão de habilidades sociais e offloading cognitivo excessivo." },
+  { corpus:"literatura_cientifica", titulo:"Teoria de Rede da Psicopatologia", fonte:"Borsboom, D. World Psychiatry, 2017", texto:"Transtornos mentais podem ser modelados como redes de sintomas que se sustentam via loops de feedback (ciclos de reforço), não como categoria única com causa central. Fundamenta a leitura de ciclos no Dígrafo Sindrômico (RF-16)." },
+  { corpus:"literatura_cientifica", titulo:"Gaming Disorder (CID-11)", fonte:"World Health Organization, ICD-11", texto:"Padrão de comportamento de jogo persistente ou recorrente, reconhecido pela OMS na Classificação Internacional de Doenças." },
+  { corpus:"normativo", titulo:"ECA Digital — Vedação de Perfilamento", fonte:"Lei nº 15.211/2025, Art. 22 e 26", texto:"Indicadores comportamentais de rede são restritos exclusivamente à saúde preventiva e supervisão parental, sendo vedada sua utilização para publicidade direcionada ou monetização de vulnerabilidades." },
+  { corpus:"normativo", titulo:"NR-1 — Gerenciamento de Riscos Ocupacionais", fonte:"MTE, NR-1 (atualizada 2022)", texto:"Obriga as empresas a gerenciar riscos ocupacionais, incluindo fatores psicossociais que afetam a saúde mental dos trabalhadores (GRO/PGR)." },
+  { corpus:"normativo", titulo:"LGPD — Base Legal e Consentimento", fonte:"Lei nº 13.709/2018, Art. 7º e 14", texto:"Consentimento coletivo obrigatório no contexto Corporativo; consentimento do responsável legal obrigatório para dado de menor." },
+  { corpus:"metodologia", titulo:"Probabilidade de Agravamento — Cadeia de Markov Absorvente", fonte:"Égide Vita — ERS v1.0, Módulo D (RF-12/RF-13)", texto:"Cada nó do dígrafo tem probabilidade estrutural de terminar em 'Crise' ou 'Estabilização' (desfechos competitivos), calculada via matriz fundamental N=(I−Q)⁻¹. Não constitui diagnóstico nem previsão individual — é propriedade estrutural do grafo, igual para todos os cohorts; o que varia por cohort é a prevalência relativa de cada nó." },
+  { corpus:"metodologia", titulo:"Ressalva de Não-Diagnóstico", fonte:"Égide Vita — ERS v1.0, RF-09/RNF-10", texto:"Todo indicador é probabilístico agregado e de apoio à priorização de encaminhamento humano. Nenhuma funcionalidade permite decisão clínica automatizada." },
+];
+function assistSearch(q){
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const scored = ASSIST_CORPUS.map(doc => {
+    const hay = (doc.titulo+" "+doc.texto+" "+doc.corpus).toLowerCase();
+    const score = terms.reduce((s,t)=> s + (hay.includes(t)?1:0), 0);
+    return { doc, score };
+  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+  return scored.slice(0,3).map(x=>x.doc);
+}
+
+/* =====================================================================
+   4. UI / RENDER
+===================================================================== */
+let ACTIVE_TAB = "overview";
+let ACTIVE_COHORT = COHORTS[0].id;
+
+const sel = document.getElementById("cohort-select");
+COHORTS.forEach(c => { const o=document.createElement("option"); o.value=c.id; o.textContent=c.nome+" · "+c.contexto; sel.appendChild(o); });
+sel.addEventListener("change", () => { ACTIVE_COHORT = sel.value; render(); });
+document.querySelectorAll(".nav-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    ACTIVE_TAB = btn.dataset.tab;
+    render();
+  });
+});
+
+function fmtPct(x){ return (x*100).toFixed(1)+"%"; }
+function currentCohort(){ return COHORTS.find(c=>c.id===ACTIVE_COHORT); }
+function currentWeeks(){ return COHORT_DATA[ACTIVE_COHORT]; }
+
+function render(){
+  const el = document.getElementById("main");
+  if (ACTIVE_TAB==="overview") renderOverview(el);
+  else if (ACTIVE_TAB==="digraph") renderDigraph(el);
+  else if (ACTIVE_TAB==="personas") renderPersonas(el);
+  else if (ACTIVE_TAB==="alerts") renderAlerts(el);
+  else if (ACTIVE_TAB==="assistant") renderAssistant(el);
+}
+
+function renderOverview(el){
+  const c = currentCohort(), weeks = currentWeeks(), last = weeks[weeks.length-1];
+  const topIdx = last.stat.indexOf(Math.max(...last.stat));
+  const cohortAlerts = ALERTS.filter(a=>a.cohort===c.nome);
+  let html = `<div class="section-title">${c.nome} — ${c.contexto}</div>
+  <div class="card-sub" style="margin-bottom:14px;">${c.populacao}</div>
+  <div class="grid4">
+    <div class="card"><div class="card-lbl">Risco agregado de agravamento</div>
+      <div class="card-val" style="color:${last.aggregateRisk>=RISK_TH.critico?'#E84040':last.aggregateRisk>=RISK_TH.atencao?'#E87000':'#4FD1A5'}">${fmtPct(last.aggregateRisk)}</div>
+      <div class="card-sub">P(Crise) ponderada pela prevalência atual — semana ${last.w+1}/${N_WEEKS}</div></div>
+    <div class="card"><div class="card-lbl">σ estrutural (JSD)</div>
+      <div class="card-val" style="color:${last.sigma>=SIGMA_TH.alto?'#E84040':last.sigma>=SIGMA_TH.moderado?'#E87000':'#4FD1A5'}">${last.sigma.toFixed(4)}</div>
+      <div class="card-sub">${last.sigma>=SIGMA_TH.alto?'Alta variação':last.sigma>=SIGMA_TH.moderado?'Variação moderada':'Estável'} vs. semana anterior</div></div>
+    <div class="card"><div class="card-lbl">Concentração (HHI)</div>
+      <div class="card-val">${last.hhi.toFixed(0)}</div>
+      <div class="card-sub">${last.hhi>2000?'Concentrado em poucos nós':'Distribuído entre nós'}</div></div>
+    <div class="card"><div class="card-lbl">Nó dominante</div>
+      <div class="card-val" style="font-size:16px;">${NODE_META[NODE_IDS[topIdx]].label}</div>
+      <div class="card-sub">${fmtPct(last.stat[topIdx])} da prevalência do cohort</div></div>
+  </div>
+  <div class="two-col">
+    <div class="panel">
+      <div class="section-title" style="margin-top:0;">Prevalência por nó (semana atual)</div>
+      ${NODE_IDS.map((id,i)=>`<div class="row"><span>${NODE_META[id].label}</span>
+        <span style="display:flex;align-items:center;gap:8px;">
+        <span style="width:120px;height:6px;background:#16283F;border-radius:3px;overflow:hidden;display:inline-block;"><span style="display:block;height:100%;width:${(last.stat[i]*100/Math.max(...last.stat)).toFixed(0)}%;background:#4FD1A5;"></span></span>
+        <b>${fmtPct(last.stat[i])}</b></span></div>`).join("")}
+      <div style="margin-top:10px;"><a href="#" onclick="document.querySelector('[data-tab=digraph]').click();return false;" style="font-size:11px;color:#4FD1A5;">Ver dígrafo sindrômico completo →</a></div>
+    </div>
+    <div class="panel">
+      <div class="section-title" style="margin-top:0;">Alertas deste cohort</div>
+      ${cohortAlerts.length ? cohortAlerts.map(a=>`<div class="row"><span>${a.objeto}<br><span style="font-size:10.5px;color:#567898;">${a.motivo}</span></span><span class="badge sev-${a.severidade}">${sevLabel(a.severidade)}</span></div>`).join("") : '<div style="font-size:12px;color:#567898;">Nenhum alerta ativo para este cohort.</div>'}
+      <div style="margin-top:10px;"><a href="#" onclick="document.querySelector('[data-tab=alerts]').click();return false;" style="font-size:11px;color:#4FD1A5;">Ver todos os alertas →</a></div>
+    </div>
+  </div>`;
+  el.innerHTML = html;
+}
+
+function renderDigraph(el){
+  const c = currentCohort(), weeks = currentWeeks(), last = weeks[weeks.length-1];
+  el.innerHTML = `
+  <div class="section-title">${c.nome} — Dígrafo Sindrômico (semana ${last.w+1}/${N_WEEKS})</div>
+  <div class="two-col">
+    <div id="graph-wrap"></div>
+    <div>
+      <div class="panel">
+        <div class="section-title" style="margin-top:0;">σ (JSD) — últimas ${N_WEEKS} semanas</div>
+        <div class="sparkline" id="spk-sigma"></div>
+      </div>
+      <div class="panel">
+        <div class="section-title" style="margin-top:0;">Referência estrutural do backbone (igual para todos os cohorts)</div>
+        <table class="ref"><thead><tr><th>Nó</th><th>Papel</th><th>P(Crise)</th><th>P(Estab.)</th><th>Passos esp.</th></tr></thead><tbody>
+        ${NODE_ROLE_REF.map((r,i)=>`<tr><td>${NODE_META[r.id].label}</td><td>${ROLE_LABEL[r.role]}</td><td style="color:${BACKBONE_ABS.B[i][0]>0.58?'#E84040':'#DCEEFB'}">${fmtPct(BACKBONE_ABS.B[i][0])}</td><td>${fmtPct(BACKBONE_ABS.B[i][1])}</td><td>${BACKBONE_ABS.steps[i].toFixed(1)}</td></tr>`).join("")}
+        </tbody></table>
+      </div>
+      <div class="panel">
+        <div class="section-title" style="margin-top:0;">Ciclos de reforço ativos (RF-16)</div>
+        ${last.cycles.length ? last.cycles.map(cy=>`<div class="row"><span>${NODE_META[cy[0]].label} ⇄ ${NODE_META[cy[1]].label}</span><span style="color:#567898;">${(cy[2]*100).toFixed(0)}% / ${(cy[3]*100).toFixed(0)}%</span></div>`).join("") : '<div style="font-size:12px;color:#567898;">Nenhum ciclo acima do limiar nesta semana.</div>'}
+        <div class="card-sub" style="margin-top:8px;">Assinatura estrutural de síndrome auto-sustentada (Borsboom, 2017) — ver Assistente.</div>
+      </div>
+    </div>
+  </div>`;
+  drawGraph(last, c);
+  drawSparkline(document.getElementById("spk-sigma"), weeks.map(w=>w.sigma), SIGMA_TH.alto);
+}
+
+function drawSparkline(container, values, critThreshold){
+  // Escala relativa ao próprio intervalo observado (min–max), não ao limiar absoluto:
+  // sigma costuma variar em faixas muito pequenas semana a semana, e uma escala fixada
+  // no limiar crítico deixaria barras baixas demais para o olho perceber a variação real.
+  const lo = Math.min(...values), hi = Math.max(...values, lo+1e-6);
+  container.innerHTML = "";
+  values.forEach((v,i) => {
+    const bar = document.createElement("div");
+    bar.className = "spk-bar";
+    bar.style.height = Math.max(3, ((v-lo)/(hi-lo)*30)+4) + "px";
+    bar.title = "semana "+(i+1)+": σ="+v.toFixed(4);
+    bar.style.background = v>=critThreshold ? "#E84040" : v>=SIGMA_TH.moderado ? "#E87000" : "#3B82C4";
+    container.appendChild(bar);
+  });
+  const lbl = document.createElement("div");
+  lbl.className = "card-sub"; lbl.style.marginTop = "6px";
+  lbl.textContent = "min "+lo.toFixed(4)+" · max "+hi.toFixed(4)+" (escala ampliada para leitura — valores absolutos nos rótulos)";
+  container.parentElement.appendChild(lbl);
+}
+
+function drawGraph(week, cohort){
+  const wrap = document.getElementById("graph-wrap");
+  const width = wrap.clientWidth, height = wrap.clientHeight;
+  const svg = d3.select(wrap).append("svg").attr("width",width).attr("height",height);
+  const ids = NODE_IDS.concat(ABSORBING_IDS);
+  const roleById = Object.fromEntries(NODE_ROLE_REF.map(r=>[r.id,r.role]));
+
+  const nodes = ids.map((id,i) => {
+    const isAbs = ABSORBING_IDS.includes(id);
+    const meta = isAbs ? ABSORBING_META[id] : NODE_META[id];
+    const w = isAbs ? 0.12 : week.stat[NODE_IDS.indexOf(id)];
+    return { id, label: meta.label, isAbs, weight: w, role: isAbs ? (id==="crise"?"absorb-crise":"absorb-estab") : roleById[id] };
+  });
+  const links = [];
+  ids.forEach((src,i) => {
+    if (ABSORBING_IDS.includes(src)) return;
+    ids.forEach((dst,j) => {
+      if (i===j) return;
+      const wgt = week.P[i][j];
+      if (wgt > 0.04) links.push({ source: src, target: dst, weight: wgt });
+    });
+  });
+
+  svg.append("defs").selectAll("marker").data(["e"]).enter().append("marker")
+    .attr("id","arrow").attr("viewBox","0 -5 10 10").attr("refX",18).attr("refY",0)
+    .attr("markerWidth",6).attr("markerHeight",6).attr("orient","auto")
+    .append("path").attr("d","M0,-5L10,0L0,5").attr("fill","#3B5878");
+
+  const sim = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d=>d.id).distance(150).strength(0.25))
+    .force("charge", d3.forceManyBody().strength(-620))
+    .force("center", d3.forceCenter(width/2, height/2))
+    .force("collide", d3.forceCollide(d => (d.isAbs?22:14+d.weight*90) + 34));
+
+  const link = svg.append("g").selectAll("line").data(links).enter().append("line")
+    .attr("stroke","#3B5878").attr("stroke-width", d=>Math.max(1, d.weight*10)).attr("opacity",0.55)
+    .attr("marker-end","url(#arrow)")
+    .on("mouseover", function(ev,d){
+      const tt = document.getElementById("tooltip");
+      tt.style.display="block"; tt.style.left=(ev.offsetX+20)+"px"; tt.style.top=(ev.offsetY+10)+"px";
+      const srcLabel = ABSORBING_IDS.includes(d.source.id||d.source) ? ABSORBING_META[d.source.id||d.source].label : NODE_META[d.source.id||d.source].label;
+      const dstLabel = ABSORBING_IDS.includes(d.target.id||d.target) ? ABSORBING_META[d.target.id||d.target].label : NODE_META[d.target.id||d.target].label;
+      tt.innerHTML = `<b>P(${dstLabel} | ${srcLabel})</b> = ${(d.weight*100).toFixed(1)}%`;
+    })
+    .on("mouseout", ()=> document.getElementById("tooltip").style.display="none");
+
+  const node = svg.append("g").selectAll("g").data(nodes).enter().append("g")
+    .call(d3.drag()
+      .on("start",(ev,d)=>{ if(!ev.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on("drag",(ev,d)=>{ d.fx=ev.x; d.fy=ev.y; })
+      .on("end",(ev,d)=>{ if(!ev.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+
+  node.append("circle")
+    .attr("r", d => d.isAbs ? 22 : 14 + d.weight*90)
+    .attr("class", d => "role-"+d.role)
+    .attr("stroke", d => d.isAbs ? "#fff" : "#09111E")
+    .attr("stroke-width", d => d.isAbs ? 2 : 1.5)
+    .attr("stroke-dasharray", d => d.isAbs ? "4 2" : null)
+    .on("mouseover", function(ev,d){
+      const tt = document.getElementById("tooltip");
+      tt.style.display="block"; tt.style.left=(ev.offsetX+20)+"px"; tt.style.top=(ev.offsetY+10)+"px";
+      const desc = d.isAbs ? ABSORBING_META[d.id].desc : NODE_META[d.id].desc;
+      const roleTxt = d.isAbs ? "Estado absorvente" : ("Papel: "+ROLE_LABEL[d.role]+" · Prevalência: "+fmtPct(d.weight));
+      tt.innerHTML = `<b>${d.label}</b><br>${desc}<br><span style="color:#8ABEDF;">${roleTxt}</span>`;
+    })
+    .on("mouseout", ()=> document.getElementById("tooltip").style.display="none");
+
+  node.append("text").text(d=>d.label).attr("font-size",10.5).attr("font-weight",700)
+    .attr("fill","#F0F8FF").attr("stroke","#050C16").attr("stroke-width",3).attr("paint-order","stroke")
+    .attr("text-anchor","middle").attr("dy", d=> d.isAbs? 36 : 14+d.weight*90+14);
+
+  sim.on("tick", () => {
+    link.attr("x1",d=>d.source.x).attr("y1",d=>d.source.y).attr("x2",d=>d.target.x).attr("y2",d=>d.target.y);
+    node.attr("transform", d=>`translate(${d.x},${d.y})`);
+  });
+}
+
+function archetypeFor(stat){
+  const idxSorted = NODE_IDS.map((id,i)=>[id,stat[i]]).sort((a,b)=>b[1]-a[1]);
+  const [top1, top2] = [idxSorted[0][0], idxSorted[1][0]];
+  const key = [top1,top2].sort().join("+");
+  const LOOKUP = {
+    "dependencia_ia+isolamento": { nome:"Padrão IA-Dependente-Isolado", desc:"Loop reforçador entre isolamento social e dependência de IA generativa — maior tempo esperado até estabilização entre os padrões observados (Borsboom, 2017)." },
+    "dependencia_ia+vamping": { nome:"Padrão Vamping-IA-Dependente", desc:"Uso noturno crítico combinado com dependência de IA generativa, com isolamento social como terceiro nó próximo — cluster de risco infanto-juvenil (ver ECA Digital, Art. 4º)." },
+    "isolamento+vamping": { nome:"Padrão Vamping-Isolado", desc:"Uso digital crítico noturno combinado com retração do raio de deslocamento físico — padrão de maior P(Crise) estrutural entre os observados." },
+    "apostas+isolamento": { nome:"Padrão Apostador-Isolado", desc:"Concentração em apostas online com retração do raio de deslocamento físico — padrão de maior P(Crise) estrutural." },
+    "apostas+binge": { nome:"Padrão Apostador-Compulsivo", desc:"Apostas online combinadas com sessões prolongadas ininterruptas — risco financeiro e comportamental combinado." },
+    "apostas+verificacao": { nome:"Padrão Apostador-Verificador", desc:"Apostas online com verificação compulsiva frequente — checagem de resultado como gatilho de reforço intermitente." },
+    "binge+verificacao": { nome:"Padrão Verificação-Binge", desc:"Verificação compulsiva alternando com sessões prolongadas de streaming/gaming — reforço intermitente seguido de consumo passivo prolongado." },
+    "vamping+verificacao": { nome:"Padrão Vamping-Verificador", desc:"Uso noturno crítico combinado com verificação compulsiva — padrão de entrada mais comum, ainda com maior taxa de estabilização espontânea." },
+    "burnout+verificacao": { nome:"Padrão Burnout Corporativo", desc:"Esgotamento por conectividade compulsória combinado com verificação compulsiva — relevante para GRO/PGR (NR-1)." },
+    "burnout+vamping": { nome:"Padrão Burnout-Noturno", desc:"Esgotamento por conectividade compulsória com extensão para uso digital crítico noturno — sinal de fronteira trabalho/descanso rompida." },
+    "binge+vamping": { nome:"Padrão Binge-Noturno", desc:"Sessões prolongadas de streaming/gaming concentradas no período noturno." },
+  };
+  return LOOKUP[key] || { nome:"Padrão Difuso", desc:"Prevalência distribuída entre múltiplos nós, sem concentração dominante clara." };
+}
+
+function renderPersonas(el){
+  let html = `<div class="section-title">Personas de Risco — todos os cohorts (semana atual)</div>
+  <div class="card-sub" style="margin-bottom:14px;">Perfis descritivos não clínicos, derivados da prevalência dominante do dígrafo sindrômico — nunca rotulados com nomenclatura de diagnóstico (RF-05).</div>`;
+  COHORTS.forEach(c => {
+    const weeks = COHORT_DATA[c.id], last = weeks[weeks.length-1];
+    const arch = archetypeFor(last.stat);
+    const sev = last.aggregateRisk>=RISK_TH.critico?"critico":last.aggregateRisk>=RISK_TH.atencao?"atencao":"normal";
+    html += `<div class="persona-card">
+      <div style="display:flex;justify-content:space-between;align-items:start;">
+        <div><div class="persona-name">${arch.nome}</div>
+        <div class="card-sub">${c.nome} · ${c.contexto}</div></div>
+        <span class="badge sev-${sev}">Risco ${sevLabel(sev)}</span>
+      </div>
+      <div class="persona-desc">${arch.desc}</div>
+      <div class="card-sub" style="margin-top:8px;">Risco agregado: <b>${fmtPct(last.aggregateRisk)}</b> · HHI: <b>${last.hhi.toFixed(0)}</b> · σ: <b>${last.sigma.toFixed(4)}</b></div>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+function renderAlerts(el){
+  let html = `<div class="section-title">Painel de Alertas — Transição Sindrômica Crítica</div>
+  <div class="card-sub" style="margin-bottom:14px;">Todo alerta crítico exige encaminhamento a responsável humano habilitado (RF-19) — nunca permanece como notificação passiva.</div>`;
+  if (!ALERTS.length) html += `<div class="panel">Nenhum alerta ativo em nenhum cohort nesta semana.</div>`;
+  ALERTS.forEach(a => {
+    html += `<div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;">
+        <div>
+          <div style="font-weight:700;font-size:13.5px;">${a.objeto} — ${a.cohort}</div>
+          <div class="card-sub">${a.contexto} · semana ${a.semana+1}/${N_WEEKS}</div>
+          <div style="font-size:12px;color:#B9D8EE;margin-top:6px;">${a.motivo}</div>
+          <div class="card-sub" style="margin-top:6px;">Risco agregado: ${fmtPct(a.risco)} · σ: ${a.sigma.toFixed(4)}</div>
+        </div>
+        <span class="badge sev-${a.severidade}">${sevLabel(a.severidade)}</span>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;">
+        <a class="btn" href="mailto:?subject=${encodeURIComponent('Encaminhamento Égide Vita — '+a.cohort)}&body=${encodeURIComponent('Alerta: '+a.objeto+' — '+a.motivo)}">Encaminhar a responsável humano</a>
+        <span class="card-sub">Status:</span>
+        <select class="status-sel" onchange="this.dataset.v=this.value">
+          <option>Novo</option><option>Reconhecido</option><option>Em Tratamento</option><option>Resolvido</option>
+        </select>
+      </div>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
+function renderAssistant(el){
+  el.innerHTML = `<div class="section-title">Assistente — Corpus Científico e Normativo</div>
+  <div id="assist-box">
+    <input id="assist-input" placeholder="Ex.: o que é vamping? o que diz o ECA Digital sobre perfilamento? por que ciclos de reforço importam?">
+    <button class="btn" onclick="doAssistSearch()">Perguntar</button>
+  </div>
+  <div id="assist-results"></div>
+  <div class="card-sub">Corpus: eFenotipagem (indicadores) · literatura_científica (peer-reviewed/OMS) · normativo (ECA Digital/NR-1/LGPD) · metodologia (honestidade metodológica do produto). Toda resposta cita fonte e seção (RF-22) — nunca recomenda conduta clínica individual (RF-24).</div>`;
+  document.getElementById("assist-input").addEventListener("keydown", e=>{ if(e.key==="Enter") doAssistSearch(); });
+}
+function doAssistSearch(){
+  const q = document.getElementById("assist-input").value.trim();
+  const results = document.getElementById("assist-results");
+  if (!q){ results.innerHTML = ""; return; }
+  if (/diagnostic|diagnóstico|tem (transtorno|doença)|devo (me matar|tomar)/i.test(q)){
+    results.innerHTML = `<div class="assist-msg">Não posso oferecer diagnóstico, conduta clínica ou aconselhamento médico individual (RF-24). Se esta pergunta se refere a uma situação real, procure um profissional de saúde ou o canal de encaminhamento humano do seu contexto (RH/SESMT, escola/responsável legal, ou serviço de saúde).</div>`;
+    return;
+  }
+  const docs = assistSearch(q);
+  if (!docs.length){ results.innerHTML = `<div class="assist-msg">Não encontrei conteúdo específico no corpus para essa pergunta. Tente mencionar um indicador (Vamping, IRE, Verificação Compulsiva...), uma norma (ECA Digital, NR-1, LGPD) ou um conceito metodológico (cadeia de Markov, ciclo de reforço).</div>`; return; }
+  results.innerHTML = docs.map(d => `<div class="assist-msg">${d.texto}
+    <div class="assist-cite ${d.corpus==='normativo'?'normativo':''}">${d.titulo} — ${d.fonte} (corpus: ${d.corpus})</div>
+  </div>`).join("");
+}
+
+render();
+</script>
+</body>
+</html>
