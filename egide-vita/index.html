@@ -584,11 +584,44 @@ function drawGraph(week, cohort){
     })
     .on("mouseout", ()=> document.getElementById("tooltip").style.display="none");
 
+  // Arrastar move o nó livremente (some ao soltar, como antes) — clique simples
+  // (sem arrastar) fixa o nó no lugar (d.fx/d.fy travados) sem mover os demais;
+  // clicar de novo solta. Um arrasto de verdade também fixa no ponto onde soltou.
+  const DRAG_MOVE_THRESHOLD = 4;
+  let dragMoved = false, dragStartX = 0, dragStartY = 0;
+
+  function refreshPinRings(){
+    node.select("circle.pin-ring").attr("opacity", d => d.pinned ? 1 : 0);
+  }
+
   const node = svg.append("g").selectAll("g").data(nodes).enter().append("g")
+    .style("cursor","pointer")
     .call(d3.drag()
-      .on("start",(ev,d)=>{ if(!ev.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
-      .on("drag",(ev,d)=>{ d.fx=ev.x; d.fy=ev.y; })
-      .on("end",(ev,d)=>{ if(!ev.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+      .on("start",(ev,d)=>{
+        if(!ev.active) sim.alphaTarget(0.3).restart();
+        dragMoved = false; dragStartX = ev.x; dragStartY = ev.y;
+        d.fx = d.x; d.fy = d.y;
+      })
+      .on("drag",(ev,d)=>{
+        if (Math.hypot(ev.x-dragStartX, ev.y-dragStartY) > DRAG_MOVE_THRESHOLD) dragMoved = true;
+        d.fx = ev.x; d.fy = ev.y;
+      })
+      .on("end",(ev,d)=>{
+        if(!ev.active) sim.alphaTarget(0);
+        if (dragMoved){
+          d.pinned = true; d.fx = ev.x; d.fy = ev.y;
+        } else {
+          d.pinned = !d.pinned;
+          if (d.pinned){ d.fx = d.x; d.fy = d.y; }
+          else { d.fx = null; d.fy = null; sim.alphaTarget(0.3).restart(); setTimeout(()=>sim.alphaTarget(0), 300); }
+        }
+        refreshPinRings();
+      }));
+
+  node.append("circle").attr("class","pin-ring")
+    .attr("r", d => (d.isAbs ? 22 : 14 + d.weight*90) + 5)
+    .attr("fill","none").attr("stroke","#F0F8FF").attr("stroke-width",1.5)
+    .attr("stroke-dasharray","3 3").attr("opacity",0).attr("pointer-events","none");
 
   node.append("circle")
     .attr("r", d => d.isAbs ? 22 : 14 + d.weight*90)
@@ -601,7 +634,8 @@ function drawGraph(week, cohort){
       tt.style.display="block"; tt.style.left=(ev.offsetX+20)+"px"; tt.style.top=(ev.offsetY+10)+"px";
       const desc = d.isAbs ? ABSORBING_META[d.id].desc : NODE_META[d.id].desc;
       const roleTxt = d.isAbs ? "Estado absorvente" : ("Papel: "+ROLE_LABEL[d.role]+" · Prevalência: "+fmtPct(d.weight));
-      tt.innerHTML = `<b>${d.label}</b><br>${desc}<br><span style="color:#8ABEDF;">${roleTxt}</span>`;
+      const pinTxt = d.pinned ? " · <span style=\"color:#4FD1A5;\">fixado</span>" : "";
+      tt.innerHTML = `<b>${d.label}</b><br>${desc}<br><span style="color:#8ABEDF;">${roleTxt}${pinTxt}</span><br><span style="color:#567898;font-size:10px;">clique para fixar/soltar o nó</span>`;
     })
     .on("mouseout", ()=> document.getElementById("tooltip").style.display="none");
 
