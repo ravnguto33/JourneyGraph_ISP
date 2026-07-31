@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Vísent — Lounge de Soluções | JourneyGraph, ITXView &amp; StepGraph</title>
-<meta name="description" content="Vitrine interativa das soluções Vísent para ISPs e operadoras móveis regionais: JourneyGraph ISP Edition (inteligência de jornada digital do assinante), ITXView ISP Edition (gestão de interconexão e peering) e StepGraph MNO Edition (mobilidade física do assinante móvel).">
+<title>Vísent — Lounge de Soluções | JourneyGraph, ITXView, StepGraph &amp; Égide Vita</title>
+<meta name="description" content="Vitrine interativa das soluções Vísent: JourneyGraph ISP Edition (inteligência de jornada digital do assinante), ITXView ISP Edition (gestão de interconexão e peering) e StepGraph MNO Edition (mobilidade física do assinante móvel) para ISPs e operadoras regionais, além do protótipo Égide Vita (fenotipagem digital para saúde), domínio Saúde do KDD Cognitivo Soberano.">
 <link rel="icon" href="assets/logo-visent.png">
 <style>
 :root{
@@ -146,6 +146,7 @@ body{
     <a href="#journeygraph">JourneyGraph</a>
     <a href="#itxview">ITXView</a>
     <a href="#stepgraph">StepGraph</a>
+    <a href="#egide-vita">Égide Vita</a>
     <a href="https://www.visent.com.br" target="_blank" rel="noopener">visent.com.br</a>
   </nav>
 </div>
@@ -343,6 +344,68 @@ body{
 
 </section>
 
+<section class="section" id="other-domains" style="padding-top:0;">
+  <div class="section-head">
+    <span class="eyebrow">Além do ISP · KDD Cognitivo Soberano</span>
+    <h2>Outro domínio Vísent: saúde digital</h2>
+    <p>Mesmo motor técnico (dígrafo dirigido, RAG, K-Means++), outro mercado — não é uma solução ISP, é o segundo produto-piloto do domínio Saúde do KDD Cognitivo Soberano.</p>
+  </div>
+  <article class="solution" id="egide-vita">
+    <div class="sol-body">
+      <span class="sol-kicker">KDD Cognitivo Soberano · Domínio Saúde — Protótipo v0.1</span>
+      <h2 class="sol-title">Égide <span class="hi" style="color:#4FD1A5;">Vita</span></h2>
+      <p class="sol-desc">Instrumento de fenotipagem digital para saúde pública, ocupacional e proteção infanto-juvenil. Reinterpreta indicadores comportamentais (vamping, isolamento, apostas, dependência de IA...) como um Dígrafo Sindrômico e calcula, via cadeia de Markov absorvente com dois desfechos competitivos (Crise/Estabilização), a probabilidade estrutural de agravamento — sempre como apoio à decisão humana, nunca como diagnóstico automatizado.</p>
+      <div class="sol-tags">
+        <span>Dígrafo Sindrômico</span><span>Markov absorvente</span><span>3 contextos de consentimento</span><span>Assistente científico-normativo</span>
+      </div>
+      <span class="sol-sub">Onde gera valor</span>
+      <ul class="sol-feats">
+        <li>Saúde pública: cohort agregado e anônimo por território, sem consentimento individual necessário</li>
+        <li>Corporativo (NR-1/GRO-PGR): indicadores agregados de risco psicossocial digital por organização</li>
+        <li>Parental/Escolar: supervisão protetiva alinhada ao ECA Digital, com consentimento do responsável legal</li>
+      </ul>
+      <span class="sol-sub">Diferencial</span>
+      <ul class="sol-feats">
+        <li>Herda o motor do JourneyGraph (dígrafo D3, personas, RAG), mas com matemática própria: probabilidade de desfecho é calculada de verdade via matriz fundamental N=(I−Q)⁻¹, não uma heurística com nome emprestado</li>
+      </ul>
+      <div class="sol-ctas">
+        <a class="btn btn-sm" style="background:#4FD1A5;color:#062018;" href="egide-vita/index.html">Abrir o protótipo ↗</a>
+      </div>
+      <p style="font-size:11.5px;color:var(--muted);font-style:italic;margin-top:4px;">Protótipo com dado 100% sintético — não constitui diagnóstico clínico. Requer validação científica e parecer de comitê de ética antes de qualquer piloto com dado real.</p>
+    </div>
+    <div class="sol-visual">
+      <svg viewBox="0 0 460 340" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="evGlow" cx="50%" cy="45%" r="60%">
+            <stop offset="0%" stop-color="#4FD1A5" stop-opacity="0.20"/>
+            <stop offset="100%" stop-color="#4FD1A5" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <circle cx="230" cy="170" r="150" fill="url(#evGlow)"/>
+        <g stroke="#2A4A6F" stroke-width="1.4" fill="none">
+          <path d="M110,110 L230,170"/>
+          <path d="M230,170 L340,100"/>
+          <path d="M230,170 L350,220"/>
+          <path d="M230,170 L130,250"/>
+          <path d="M110,110 L130,250"/>
+        </g>
+        <g stroke="#4FD1A5" stroke-width="2.4" fill="none">
+          <path d="M110,110 L230,170"/>
+          <path d="M230,170 L130,250"/>
+        </g>
+        <circle cx="230" cy="170" r="16" fill="#4FD1A5"/>
+        <circle cx="110" cy="110" r="9" fill="#12324A" stroke="#4FD1A5" stroke-width="1.5"/>
+        <circle cx="340" cy="100" r="9" fill="#E84040"/>
+        <circle cx="350" cy="220" r="9" fill="#12324A" stroke="#8ABEDF" stroke-width="1.5"/>
+        <circle cx="130" cy="250" r="9" fill="#2E9E5B"/>
+        <text x="340" y="88" text-anchor="middle" font-size="9" fill="#E84040" font-family="Arial" font-weight="700">CRISE</text>
+        <text x="130" y="272" text-anchor="middle" font-size="9" fill="#2E9E5B" font-family="Arial" font-weight="700">ESTABILIZAÇÃO</text>
+        <text x="230" y="35" text-anchor="middle" font-size="13" fill="#9ACCE0" font-family="Arial" letter-spacing="1">DÍGRAFO SINDRÔMICO</text>
+      </svg>
+    </div>
+  </article>
+</section>
+
 <section class="section">
   <div class="section-head">
     <span class="eyebrow">Como funciona</span>
@@ -375,9 +438,8 @@ body{
       <span class="brand-tag">OSX Telecomunicações S/A</span>
     </div>
     <div id="footer-meta">
-      <div>Lounge de demonstração — Portfólio ISP</div>
+      <div>Lounge de demonstração — Portfólio ISP + Saúde Digital</div>
       <div><a href="https://www.visent.com.br" target="_blank" rel="noopener">visent.com.br</a></div>
-      <div style="margin-top:6px;">Outro domínio Vísent: <a href="egide-vita/index.html">Égide Vita — fenotipagem digital para saúde</a> (protótipo, fora do escopo ISP)</div>
     </div>
   </div>
 </footer>
