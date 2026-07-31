@@ -53,6 +53,14 @@ table.ref tr:hover td{background:#0F1F32;}
 /* dígrafo */
 #graph-wrap{position:relative;background:#050C16;border:1px solid #1A3050;border-radius:10px;height:520px;overflow:hidden;}
 #tooltip{position:absolute;background:#0C1829;border:1px solid #2A4A6F;border-radius:6px;padding:8px 11px;font-size:11.5px;color:#DCEEFB;pointer-events:none;display:none;max-width:260px;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,.4);}
+.info-box{position:absolute;max-width:360px;max-height:480px;overflow:auto;background:#0C1829;border:1px solid #4FD1A5;border-radius:9px;padding:12px 14px;font-size:12px;color:#DCEEFB;box-shadow:0 8px 24px rgba(0,0,0,.5);z-index:6;display:none;}
+#edge-box{top:14px;left:14px;}
+#path-box{bottom:14px;left:14px;}
+.btn-path{background:transparent;border:1px solid #2A4A6F;color:#9ACCE0;font-size:11.5px;padding:6px 14px;border-radius:6px;cursor:pointer;font-family:Arial,sans-serif;font-weight:600;}
+.btn-path:hover{border-color:#4FD1A5;color:#4FD1A5;}
+.btn-path.active{background:#4FD1A5;border-color:#4FD1A5;color:#062018;}
+.btn-path-ghost{background:transparent;border:1px solid #E84040;color:#E84040;font-size:11.5px;padding:6px 14px;border-radius:6px;cursor:pointer;font-family:Arial,sans-serif;font-weight:600;}
+.btn-path-ghost:hover{background:#E8404022;}
 .role-nucleo{fill:#4FD1A5;}
 .role-ponte{fill:#E87000;}
 .role-ancora{fill:#3B82C4;}
@@ -495,7 +503,14 @@ function renderDigraph(el){
   el.innerHTML = `
   <div class="section-title">${c.nome} — Dígrafo Sindrômico (semana ${last.w+1}/${N_WEEKS})</div>
   <div class="two-col">
-    <div id="graph-wrap"></div>
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <button id="path-toggle-btn" class="btn-path">Marcar caminho</button>
+        <button id="path-clear-btn" class="btn-path-ghost" style="display:none;">Limpar caminho</button>
+        <span id="path-hint" style="font-size:11px;color:#8ABEDF;"></span>
+      </div>
+      <div id="graph-wrap"></div>
+    </div>
     <div>
       <div class="panel">
         <div class="section-title" style="margin-top:0;">σ (JSD) — últimas ${N_WEEKS} semanas</div>
@@ -544,6 +559,8 @@ function drawGraph(week, cohort){
   const svg = d3.select(wrap).append("svg").attr("width",width).attr("height",height);
   const ids = NODE_IDS.concat(ABSORBING_IDS);
   const roleById = Object.fromEntries(NODE_ROLE_REF.map(r=>[r.id,r.role]));
+  const labelOf = id => ABSORBING_IDS.includes(id) ? ABSORBING_META[id].label : NODE_META[id].label;
+  const probBetween = (aId,bId) => week.P[ids.indexOf(aId)][ids.indexOf(bId)];
 
   const nodes = ids.map((id,i) => {
     const isAbs = ABSORBING_IDS.includes(id);
@@ -572,17 +589,130 @@ function drawGraph(week, cohort){
     .force("center", d3.forceCenter(width/2, height/2))
     .force("collide", d3.forceCollide(d => (d.isAbs?22:14+d.weight*90) + 34));
 
+  // ---- Caixa de transições ao clicar numa aresta: mostra, para os dois nós
+  // conectados, tudo que sai e tudo que chega (não só o par clicado). ----
+  const edgeBox = document.createElement("div");
+  edgeBox.id = "edge-box"; edgeBox.className = "info-box";
+  wrap.appendChild(edgeBox);
+  function hideEdgeBox(){ edgeBox.style.display = "none"; }
+  function transitionList(fromEachTo, fixedIdx, highlightId){
+    // fromEachTo=true: linha (saídas do nó fixedIdx); false: coluna (chegadas ao nó fixedIdx)
+    const items = ids.map((id,k) => ({ id, prob: fromEachTo ? week.P[fixedIdx][k] : week.P[k][fixedIdx] }))
+      .filter(x => x.id !== ids[fixedIdx] && x.prob > 0.005)
+      .sort((a,b) => b.prob-a.prob);
+    if (!items.length) return '<div style="font-size:11px;color:#567898;">nenhuma acima de 0,5%</div>';
+    return items.map(x => `<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0;${x.id===highlightId?'color:#4FD1A5;font-weight:700;':'color:#DCEEFB;'}"><span>${labelOf(x.id)}</span><span>${(x.prob*100).toFixed(1)}%</span></div>`).join("");
+  }
+  function nodeTransitionBlock(id, highlightId){
+    const idx = ids.indexOf(id);
+    return `<div style="flex:1;min-width:0;">
+      <div style="font-weight:700;color:#F0F8FF;margin-bottom:2px;">${labelOf(id)}</div>
+      <div style="font-size:9.5px;color:#8ABEDF;text-transform:uppercase;letter-spacing:.04em;margin-top:6px;">Sai para</div>
+      ${transitionList(true, idx, highlightId)}
+      <div style="font-size:9.5px;color:#8ABEDF;text-transform:uppercase;letter-spacing:.04em;margin-top:6px;">Recebe de</div>
+      ${transitionList(false, idx, highlightId)}
+    </div>`;
+  }
+  function showEdgeTransitions(sourceId, targetId){
+    edgeBox.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="font-size:12.5px;font-weight:700;color:#F0F8FF;">${labelOf(sourceId)} → ${labelOf(targetId)}</div>
+        <span id="edge-box-close" style="cursor:pointer;color:#8ABEDF;font-size:14px;line-height:1;padding:2px 6px;">✕</span>
+      </div>
+      <div style="display:flex;gap:16px;">
+        ${nodeTransitionBlock(sourceId, targetId)}
+        ${nodeTransitionBlock(targetId, sourceId)}
+      </div>`;
+    edgeBox.style.display = "block";
+    document.getElementById("edge-box-close").onclick = ev => { ev.stopPropagation(); hideEdgeBox(); };
+  }
+
+  // ---- Modo "marcar caminho": clique em nós em sequência acumula P(passo a
+  // passo) e mostra o produto — probabilidade final do primeiro ao último nó. ----
+  const pathBox = document.createElement("div");
+  pathBox.id = "path-box"; pathBox.className = "info-box";
+  wrap.appendChild(pathBox);
+  let pathMode = false, pathNodes = [];
+  const pathToggleBtn = document.getElementById("path-toggle-btn");
+  const pathClearBtn = document.getElementById("path-clear-btn");
+  const pathHint = document.getElementById("path-hint");
+  function pathEdgeKey(a,b){ return a+"→"+b; }
+  function updatePathHighlight(){
+    const activeEdges = new Set();
+    for (let i=0;i<pathNodes.length-1;i++) activeEdges.add(pathEdgeKey(pathNodes[i], pathNodes[i+1]));
+    link.attr("stroke", l => activeEdges.has(pathEdgeKey(l.source.id||l.source, l.target.id||l.target)) ? "#4FD1A5" : "#3B5878")
+        .attr("stroke-width", l => activeEdges.has(pathEdgeKey(l.source.id||l.source, l.target.id||l.target)) ? Math.max(3, l.weight*10) : Math.max(1, l.weight*10))
+        .attr("opacity", l => activeEdges.has(pathEdgeKey(l.source.id||l.source, l.target.id||l.target)) ? 1 : 0.5);
+    node.selectAll("circle:not(.pin-ring)")
+        .attr("stroke", d => pathNodes.includes(d.id) ? "#4FD1A5" : (d.isAbs ? "#fff" : "#09111E"))
+        .attr("stroke-width", d => pathNodes.includes(d.id) ? 3.5 : (d.isAbs ? 2 : 1.5));
+  }
+  function renderPathBox(){
+    pathClearBtn.style.display = pathNodes.length ? "inline-block" : "none";
+    if (pathNodes.length === 0){ pathBox.style.display = "none"; return; }
+    if (pathNodes.length === 1){
+      pathBox.style.display = "block";
+      pathBox.innerHTML = `<div style="font-size:12px;color:#9ACCE0;">Caminho iniciado em <b style="color:#F0F8FF;">${labelOf(pathNodes[0])}</b>. Clique no próximo nó para continuar.</div>`;
+      return;
+    }
+    let product = 1;
+    const steps = [];
+    for (let i=0;i<pathNodes.length-1;i++){
+      const p = probBetween(pathNodes[i], pathNodes[i+1]);
+      product *= p;
+      steps.push({ from: pathNodes[i], to: pathNodes[i+1], p });
+    }
+    pathBox.style.display = "block";
+    pathBox.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="font-size:12px;font-weight:700;color:#F0F8FF;">Caminho marcado (${pathNodes.length} nós)</div>
+        <span id="path-box-close" style="cursor:pointer;color:#8ABEDF;font-size:14px;line-height:1;padding:2px 6px;">✕</span>
+      </div>
+      <div style="font-size:10.5px;color:#9ACCE0;margin-bottom:8px;">${pathNodes.map(labelOf).join(" → ")}</div>
+      ${steps.map(s=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;color:#DCEEFB;"><span>${labelOf(s.from)} → ${labelOf(s.to)}</span><span>${(s.p*100).toFixed(1)}%</span></div>`).join("")}
+      <div style="border-top:1px solid #1A3050;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
+        <span style="font-size:11px;color:#8ABEDF;">P(${labelOf(pathNodes[pathNodes.length-1])} | ${labelOf(pathNodes[0])}) pelo caminho</span>
+        <span style="font-size:17px;font-weight:700;color:${product<0.01?'#E84040':'#4FD1A5'};white-space:nowrap;">${(product*100).toFixed(3)}%</span>
+      </div>`;
+    document.getElementById("path-box-close").onclick = ev => { ev.stopPropagation(); clearPath(); };
+  }
+  function addToPath(id){
+    if (pathNodes[pathNodes.length-1] === id) return;
+    pathNodes.push(id);
+    renderPathBox();
+    updatePathHighlight();
+  }
+  function clearPath(){
+    pathNodes = [];
+    renderPathBox();
+    updatePathHighlight();
+  }
+  pathToggleBtn.onclick = () => {
+    pathMode = !pathMode;
+    pathToggleBtn.textContent = pathMode ? "Marcando caminho…" : "Marcar caminho";
+    pathToggleBtn.classList.toggle("active", pathMode);
+    pathHint.textContent = pathMode ? "Clique nos nós em sequência." : "";
+  };
+  pathClearBtn.onclick = () => clearPath();
+
   const link = svg.append("g").selectAll("line").data(links).enter().append("line")
     .attr("stroke","#3B5878").attr("stroke-width", d=>Math.max(1, d.weight*10)).attr("opacity",0.55)
     .attr("marker-end","url(#arrow)")
+    .style("cursor","pointer")
     .on("mouseover", function(ev,d){
       const tt = document.getElementById("tooltip");
       tt.style.display="block"; tt.style.left=(ev.offsetX+20)+"px"; tt.style.top=(ev.offsetY+10)+"px";
       const srcLabel = ABSORBING_IDS.includes(d.source.id||d.source) ? ABSORBING_META[d.source.id||d.source].label : NODE_META[d.source.id||d.source].label;
       const dstLabel = ABSORBING_IDS.includes(d.target.id||d.target) ? ABSORBING_META[d.target.id||d.target].label : NODE_META[d.target.id||d.target].label;
-      tt.innerHTML = `<b>P(${dstLabel} | ${srcLabel})</b> = ${(d.weight*100).toFixed(1)}%`;
+      tt.innerHTML = `<b>P(${dstLabel} | ${srcLabel})</b> = ${(d.weight*100).toFixed(1)}%<br><span style="color:#567898;font-size:10px;">clique para ver todas as transições</span>`;
     })
-    .on("mouseout", ()=> document.getElementById("tooltip").style.display="none");
+    .on("mouseout", ()=> document.getElementById("tooltip").style.display="none")
+    .on("click", function(ev,d){
+      ev.stopPropagation();
+      showEdgeTransitions(d.source.id||d.source, d.target.id||d.target);
+    });
+
+  svg.on("click", () => hideEdgeBox());
 
   // Arrastar move o nó livremente (some ao soltar, como antes) — clique simples
   // (sem arrastar) fixa o nó no lugar (d.fx/d.fy travados) sem mover os demais;
@@ -610,6 +740,8 @@ function drawGraph(week, cohort){
         if(!ev.active) sim.alphaTarget(0);
         if (dragMoved){
           d.pinned = true; d.fx = ev.x; d.fy = ev.y;
+        } else if (pathMode){
+          addToPath(d.id);
         } else {
           d.pinned = !d.pinned;
           if (d.pinned){ d.fx = d.x; d.fy = d.y; }
