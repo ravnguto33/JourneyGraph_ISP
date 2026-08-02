@@ -144,6 +144,7 @@ body{
   </div>
   <nav id="topnav">
     <a href="#journeygraph">JourneyGraph</a>
+    <a href="#netgraph">NetGraph</a>
     <a href="#itxview">ITXView</a>
     <a href="#stepgraph">StepGraph</a>
     <a href="#egide-vita">Égide Vita</a>
@@ -227,6 +228,68 @@ body{
         <circle cx="300" cy="270" r="10" fill="#E87000"/>
         <text x="230" y="164" text-anchor="middle" font-size="10" font-weight="700" fill="#09111E" font-family="Arial">ASN</text>
         <text x="230" y="40" text-anchor="middle" font-size="13" fill="#9ACCE0" font-family="Arial" letter-spacing="1">DÍGRAFO DE JORNADA</text>
+      </svg>
+    </div>
+  </article>
+
+  <article class="solution" id="netgraph">
+    <div class="sol-body">
+      <span class="sol-kicker">CDRView ISP Edition · Service Assurance</span>
+      <h2 class="sol-title">Net<span class="hi" style="color:#5AC8FA;">Graph</span></h2>
+      <p class="sol-desc">Faz pela rede o que o JourneyGraph faz pela jornada do assinante: transforma a topologia de POP, OLT, PON e CTO em um dígrafo interativo, com alertas explicáveis e um Assistente que contextualiza tudo em normas, processos e dados de outras áreas da operação. Diferente do JourneyGraph, os modelos analíticos aqui são reais — matriz de Markov, rede Bayesiana, detector de outlier e regressão de capacidade calculados de fato sobre a base sintética, não heurísticas de score.</p>
+      <div class="sol-tags">
+        <span>Grafos + Markov + Bayes</span><span>Outlier real (MAD)</span><span>Regressão com IC 95%</span><span>Assistente RAG</span>
+      </div>
+      <span class="sol-sub">Onde gera valor</span>
+      <ul class="sol-feats">
+        <li>NOC: causa raiz isolada por rede Bayesiana com posterior explícito sobre 6 causas candidatas, não um rótulo sem grau de confiança</li>
+        <li>Priorização: alertas ordenados por score combinado de gravidade técnica × impacto de negócio (assinantes, SLA corporativo, CRM, risco Ouvidoria/Anatel)</li>
+        <li>Planejamento de rede: projeção de saturação por POP/OLT com data estimada e intervalo de confiança, via regressão real</li>
+        <li>Compliance: Assistente cita RQUAL/Selo Anatel (parafraseados) e boas práticas ITU-T M.3400/FCAPS e TM Forum eTOM Assurance</li>
+      </ul>
+      <span class="sol-sub">Diferencial</span>
+      <ul class="sol-feats">
+        <li>Mesma arquitetura de dígrafo, sidebars e Assistente do JourneyGraph, mas com o salto que o próprio JourneyGraph admite não ter dado: Markov, Bayes e detecção de outlier calculados de verdade, não simulados</li>
+      </ul>
+      <div class="sol-ctas">
+        <a class="btn btn-sm" style="background:#5AC8FA;color:#062018;" href="netgraph/index.html">Abrir o dashboard ↗</a>
+      </div>
+    </div>
+    <div class="sol-visual">
+      <svg viewBox="0 0 460 340" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="ngGlow" cx="50%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="#5AC8FA" stop-opacity="0.20"/>
+            <stop offset="100%" stop-color="#5AC8FA" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <circle cx="230" cy="170" r="150" fill="url(#ngGlow)"/>
+        <g stroke="#2A4A6F" stroke-width="1.4" fill="none">
+          <path d="M230,60 L120,120"/>
+          <path d="M230,60 L340,120"/>
+          <path d="M120,120 L70,190"/>
+          <path d="M120,120 L150,200"/>
+          <path d="M340,120 L310,200"/>
+          <path d="M340,120 L390,190"/>
+          <path d="M70,190 L60,260"/>
+          <path d="M70,190 L100,260"/>
+          <path d="M310,200 L300,270"/>
+        </g>
+        <g stroke="#E84040" stroke-width="2" fill="none" stroke-dasharray="3 2">
+          <path d="M150,200 L120,120"/>
+        </g>
+        <circle cx="230" cy="60" r="13" fill="#12324A" stroke="#5AC8FA" stroke-width="2"/>
+        <circle cx="120" cy="120" r="9" fill="#E87000"/>
+        <circle cx="340" cy="120" r="9" fill="#2ECC71"/>
+        <circle cx="70" cy="190" r="7" fill="#2ECC71"/>
+        <circle cx="150" cy="200" r="7" fill="#FF4444" stroke="#FF4444" stroke-width="1.5"/>
+        <circle cx="310" cy="200" r="7" fill="#2ECC71"/>
+        <circle cx="390" cy="190" r="7" fill="#2ECC71"/>
+        <circle cx="60" cy="260" r="5" fill="#12324A" stroke="#8ABEDF" stroke-width="1.2"/>
+        <circle cx="100" cy="260" r="5" fill="#12324A" stroke="#8ABEDF" stroke-width="1.2"/>
+        <circle cx="300" cy="270" r="5" fill="#12324A" stroke="#8ABEDF" stroke-width="1.2"/>
+        <text x="150" y="215" text-anchor="middle" font-size="8" fill="#FF4444" font-family="Arial" font-weight="700">SPOF</text>
+        <text x="230" y="35" text-anchor="middle" font-size="13" fill="#9ACCE0" font-family="Arial" letter-spacing="1">TOPOLOGIA POP→OLT→PON→CTO</text>
       </svg>
     </div>
   </article>

@@ -1,0 +1,2081 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NetGraph — Vísent CDRView ISP Edition</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<link rel="icon" href="../assets/logo-visent.png">
+<style>
+
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#09111E;color:#E0EAF5;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+/* ── TOPBAR ── */
+#topbar{background:#0C1829;border-bottom:1px solid #1A3050;padding:6px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;min-height:52px;}
+.brand-tag{font-size:10px;color:#8ABEDF;letter-spacing:.10em;text-transform:uppercase;}
+.brand-title{font-size:20px;font-weight:700;color:#F0F8FF;}
+.brand-accent{color:#E87000;}
+.brand-sub{font-size:11px;color:#8ABEDF;margin-top:1px;}
+#topbar-logo img{height:36px;width:auto;filter:brightness(0) invert(1);}
+/* overflow-x:auto + max-width:100% aqui (não só numa media query) evita que a
+   barra de abas pinte por cima dos elementos vizinhos quando não cabe no
+   espaço que o flex pai (#topbar) lhe dá — mesmo padrão do JourneyGraph. */
+#nav-tabs{display:flex;gap:3px;background:#050C16;padding:3px;border-radius:8px;overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
+.nav-btn{background:transparent;border:none;color:#8ABEDF;font-size:13px;font-weight:600;padding:5px 16px;border-radius:6px;cursor:pointer;font-family:Arial,sans-serif;transition:all .15s;white-space:nowrap;}
+.nav-btn[data-screen]{flex-shrink:0;}
+.nav-btn:hover{background:#0D1829;color:#E0F4FF;}
+.nav-btn.active{background:#E87000;color:#fff;}
+
+/* ── LAYOUT DE ALERTAS (lista + assistente lado a lado, empilha < 900px) ── */
+.alerts-layout{display:flex;gap:16px;align-items:flex-start;}
+.alerts-col-main{flex:1.4;min-width:0;}
+.alerts-col-side{flex:1;min-width:300px;max-width:400px;position:sticky;top:0;height:calc(100vh - 150px);display:flex;flex-direction:column;background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:12px;flex-shrink:0;}
+
+/* ── METRICS STRIP ── */
+#metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;padding:5px 16px;background:#07101C;border-bottom:1px solid #1A3050;flex-shrink:0;}
+.mc{background:#0C1829;border:1px solid #1A3050;border-radius:5px;padding:5px 10px;}
+.mc-lbl{font-size:9px;color:#8ABEDF;text-transform:uppercase;letter-spacing:.07em;}
+.mc-val{font-size:19px;font-weight:700;color:#F0F8FF;line-height:1.2;}
+.mc-sub{font-size:10px;color:#9ACCE0;margin-top:2px;}
+
+/* ── MAIN LAYOUT ── */
+#main{display:flex;flex:1;overflow:hidden;min-height:0;}
+
+/* ── COLUNA ESQUERDA (filtros + zonas) ── */
+#left-col{width:220px;background:#070E1A;border-right:1px solid #1A3050;overflow-y:auto;flex-shrink:0;padding:10px;display:flex;flex-direction:column;gap:8px;}
+.fb-group{display:flex;flex-direction:column;gap:6px;background:#0C1829;border:1px solid #1A3050;border-radius:7px;padding:8px 10px;}
+.fb-label{font-size:10px;color:#8ABEDF;font-weight:700;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;}
+.fbtn{display:block;width:100%;text-align:left;background:transparent;border:1px solid #2A4A6F;color:#A0C8E4;font-size:12px;font-family:Arial,sans-serif;padding:4px 10px;border-radius:6px;cursor:pointer;transition:all .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fbtn:hover{border-color:#E87000;color:#E87000;}
+.fbtn.active{background:#E87000;border-color:#E87000;color:#fff;font-weight:700;}
+.fb-check{display:flex;align-items:center;gap:6px;font-size:12px;color:#A0C8E4;}
+.zone-item{display:flex;justify-content:space-between;padding:4px 8px;font-size:11.5px;color:#8ABEDF;border-radius:4px;cursor:pointer;border-left:2px solid transparent;}
+.zone-item:hover{background:#0C1829;}
+.zone-item.active{color:#E87000;border-left-color:#E87000;background:#0C1829;font-weight:700;}
+.zone-n{color:#567898;font-size:10px;}
+
+/* ── CENTER PANEL ── */
+#center{flex:1;position:relative;overflow:hidden;}
+.screen{position:absolute;inset:0;display:none;overflow-y:auto;}
+.screen.active{display:block;}
+#screen-topology{overflow:hidden;}
+#graph-svg{width:100%;height:100%;touch-action:none;}
+.tooltip{position:absolute;pointer-events:none;background:#0C1829;border:1px solid #1E3A5F;border-radius:6px;padding:7px 11px;font-size:12px;color:#E8F4FF;max-width:240px;display:none;z-index:10;}
+
+/* ── SIDEBAR DIREITA (legenda + detalhe do nó) ── */
+#detail-sidebar{width:300px;background:#070E1A;border-left:1px solid #1A3050;overflow-y:auto;flex-shrink:0;padding:10px;}
+.ds-title{font-size:10px;color:#8ABEDF;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;}
+.leg-item{display:flex;align-items:center;gap:6px;padding:3px 4px;font-size:11.5px;color:#D0E8FF;}
+.leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.spof-badge{display:inline-block;font-size:9px;font-weight:700;background:rgba(255,68,68,.15);color:#FF4444;border:1px solid #FF4444;border-radius:8px;padding:1px 6px;margin-left:4px;}
+.corp-badge{display:inline-block;font-size:9px;font-weight:700;background:rgba(96,192,255,.15);color:#60C0FF;border:1px solid #2A5F86;border-radius:8px;padding:1px 6px;margin-left:4px;}
+.nd-row{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #0F1E30;font-size:12px;}
+.nd-row .k{color:#567898;}
+.nd-row .v{color:#D0E8FF;font-weight:600;text-align:right;}
+.nd-card{background:#0C1829;border:1px solid #1A3050;border-radius:7px;padding:10px;margin-bottom:8px;}
+.nd-bar-wrap{background:#0A1422;border-radius:3px;height:6px;margin-top:4px;overflow:hidden;}
+.nd-bar-fill{height:100%;border-radius:3px;}
+.mk-cell{display:inline-block;width:15%;text-align:center;font-size:9px;padding:2px 0;}
+
+/* ── CAPACIDADE ── */
+#screen-capacity{padding:14px;background:#08111E;}
+.cap-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.cap-card{background:#0C1829;border:1px solid #1A3050;border-radius:7px;padding:12px;}
+.cap-card.full{grid-column:1/-1;}
+.cap-title{font-size:12px;color:#D0E8FF;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+.cap-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #0A1422;}
+.cap-lbl{font-size:12px;color:#A0C8E4;width:150px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cap-bar-wrap{flex:1;background:#0A1422;height:8px;border-radius:4px;overflow:hidden;min-width:60px;}
+.cap-bar-fill{height:100%;border-radius:4px;}
+.cap-eta{font-size:11px;min-width:150px;text-align:right;flex-shrink:0;}
+.cap-table{width:100%;border-collapse:collapse;font-size:11.5px;}
+.cap-table th{color:#8ABEDF;font-weight:700;text-align:left;padding:4px 6px;border-bottom:1px solid #1A3050;text-transform:uppercase;font-size:10px;}
+.cap-table td{padding:4px 6px;border-bottom:1px solid #0F2035;color:#C0DCEE;}
+
+/* ── ALERTAS ── */
+#screen-alerts{padding:16px;overflow-y:auto;}
+.al-card{background:#0C1829;border:1px solid #1A3050;border-radius:8px;margin-bottom:8px;overflow:hidden;}
+.al-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;cursor:pointer;}
+.al-body{border-top:1px solid #1A3050;padding:12px 14px;}
+.al-sec-title{font-size:10px;color:#567898;text-transform:uppercase;letter-spacing:.05em;margin:10px 0 4px;font-weight:700;}
+.al-sec-title:first-child{margin-top:0;}
+.score-bar-wrap{background:#07101C;border-radius:3px;height:6px;overflow:hidden;margin-top:2px;}
+.score-bar-fill{height:100%;border-radius:3px;}
+
+/* ── ASSISTENTE ── */
+#screen-assistant{padding:16px;}
+
+/* ── CONSULTA INDIVIDUAL ── */
+#screen-restricted{padding:16px;overflow-y:auto;}
+#restricted-overlay{position:fixed;inset:0;background:rgba(3,10,19,.92);z-index:2100;display:none;align-items:center;justify-content:center;padding:20px;}
+.rst-box{background:#0A1828;border:1px solid #C0392B;border-radius:12px;padding:28px 30px;max-width:460px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.7);}
+.rst-box h2{font-size:16px;color:#FF6B5B;margin:0 0 8px;}
+.rst-box p{font-size:12px;color:#8ABEDF;line-height:1.6;margin-bottom:16px;}
+.rst-field{margin-bottom:12px;}
+.rst-field label{display:block;font-size:11px;color:#567898;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;}
+.rst-field select,.rst-field input{width:100%;background:#060E18;border:1px solid #1A3050;border-radius:6px;color:#D0E8FF;padding:8px 10px;font-size:13px;font-family:Arial,sans-serif;box-sizing:border-box;}
+.rst-field select:focus,.rst-field input:focus{outline:none;border-color:#C0392B;}
+.rst-err{color:#FF6B5B;font-size:11.5px;margin-top:8px;display:none;}
+.rst-actions{display:flex;gap:10px;margin-top:16px;}
+.rst-submit{flex:1;background:#C0392B;border:none;color:#fff;padding:10px;border-radius:7px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;font-size:13px;}
+.rst-submit:hover{background:#E04030;}
+.rst-cancel{background:transparent;border:1px solid #1A3050;color:#567898;padding:10px 16px;border-radius:7px;cursor:pointer;font-family:Arial,sans-serif;font-size:13px;}
+.rst-banner{background:#3A1015;border:1px solid #C0392B;border-radius:8px;padding:9px 14px;font-size:11.5px;color:#FFB4A8;margin-bottom:14px;}
+.rst-banner a{color:#FF6B5B;}
+.rst-search{display:flex;gap:10px;margin-bottom:16px;}
+.rst-search input{flex:1;background:#060E18;border:1px solid #1A3050;border-radius:6px;color:#D0E8FF;padding:9px 12px;font-size:13px;font-family:Consolas,monospace;box-sizing:border-box;}
+.rst-search button{background:#E87000;border:none;color:#fff;padding:9px 20px;border-radius:6px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif;font-size:12.5px;}
+.rst-search .rst-random{background:#1A3050;color:#8ABEDF;}
+.rst-profile{background:#0C1829;border:1px solid #1A3050;border-radius:10px;padding:16px 18px;margin-bottom:16px;}
+.rst-profile-row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid #0F1E30;font-size:12.5px;}
+.rst-profile-row:last-child{border-bottom:none;}
+.rst-profile-row .k{color:#567898;flex-shrink:0;}
+.rst-profile-row .v{color:#D0E8FF;font-weight:600;text-align:right;}
+.rst-audit-table{width:100%;border-collapse:collapse;font-size:11px;}
+.rst-audit-table th{text-align:left;color:#567898;padding:5px 8px;border-bottom:1px solid #1A3050;text-transform:uppercase;letter-spacing:.04em;font-size:10px;}
+.rst-audit-table td{padding:5px 8px;border-bottom:1px solid #0F1E30;color:#8ABEDF;}
+
+#footer{background:#060E18;border-top:1px solid #1A3050;padding:3px 16px;font-size:9px;color:#567898;display:flex;justify-content:space-between;flex-shrink:0;}
+
+/* ── CONTROLE DE TELA ── */
+body:not(.screen-topology) #metrics{display:none !important;}
+body.screen-topology #metrics{display:grid !important;}
+body.screen-alerts #detail-sidebar,
+body.screen-alerts #left-col,
+body.screen-capacity #detail-sidebar,
+body.screen-capacity #left-col,
+body.screen-assistant #detail-sidebar,
+body.screen-assistant #left-col,
+body.screen-restricted #detail-sidebar,
+body.screen-restricted #left-col{display:none !important;}
+
+/* ── RESPONSIVIDADE ──────────────────────────────────────────────────────
+   Mesmos aprendizados já validados no JourneyGraph e no StepGraph, aplicados
+   desde o início (não como rodada de correção posterior): sidebars viram
+   gaveta deslizante <900px, alvos de toque maiores só em telas estreitas,
+   nav com overflow-x próprio (regra base acima, não só em media query),
+   e breakpoint de 480px oculta elementos decorativos do topbar. */
+.sidebar-toggle-btn{display:none;}
+#sidebar-backdrop{display:none;}
+
+@media(max-width:1300px){
+  #metrics{grid-template-columns:repeat(3,1fr);}
+  .cap-grid{grid-template-columns:1fr;}
+}
+
+@media(max-width:900px){
+  .sidebar-toggle-btn{display:inline-flex !important;align-items:center;justify-content:center;background:#0E1F2E;border:1px solid #2A4A6F;color:#8ABEDF;font-size:19px;padding:10px 13px;border-radius:6px;cursor:pointer;min-width:42px;min-height:42px;}
+  .nav-btn[data-screen]{padding:11px 16px;font-size:14px;min-height:40px;}
+  .brand-sub{display:none;}
+  #topbar{position:relative;z-index:600;flex-wrap:wrap;row-gap:6px;}
+
+  #left-col, #detail-sidebar{
+    position:fixed; top:0; bottom:0; width:270px; z-index:500;
+    transition:transform .25s ease; box-shadow:0 0 24px rgba(0,0,0,0.6);
+  }
+  #left-col{left:0; transform:translateX(-100%);}
+  #left-col.sidebar-open{transform:translateX(0);}
+  #detail-sidebar{right:0; left:auto; border-left:1px solid #1A3050; transform:translateX(100%);}
+  #detail-sidebar.sidebar-open{transform:translateX(0);}
+
+  #sidebar-backdrop.show{display:block;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:400;}
+
+  #metrics{grid-template-columns:repeat(2,1fr);}
+  .cap-grid{grid-template-columns:1fr !important;}
+  .cap-lbl{width:110px;}
+
+  .alerts-layout{flex-direction:column;}
+  .alerts-col-side{min-width:0;max-width:100%;width:100%;position:relative;top:auto;height:auto;max-height:70vh;}
+  #alerts-content select{padding:9px 10px !important;font-size:13px !important;min-height:38px;}
+
+  .rst-search button, .rst-submit, .rst-cancel{padding:12px 20px;font-size:14px;min-height:42px;}
+  .rst-field select, .rst-field input{padding:11px 10px;font-size:14px;min-height:40px;}
+  .fbtn, .zone-item{padding:8px 10px;min-height:36px;display:flex;align-items:center;}
+}
+
+@media(max-width:480px){
+  #metrics{grid-template-columns:1fr 1fr;}
+  #topbar-logo{display:none;}
+  .brand-title{font-size:16px;}
+}
+
+</style>
+</head>
+<body class="screen-topology">
+
+<div id="topbar">
+  <button class="nav-btn sidebar-toggle-btn" id="left-col-toggle-btn" onclick="_toggleSidebar('left-col')" title="Filtros e Zonas" style="flex-shrink:0;">&#9776;</button>
+  <a id="topbar-logo" href="../index.html"><img src="../assets/logo-visent.png" alt="Vísent"></a>
+  <div>
+    <div class="brand-tag">Vísent · CDRView ISP Edition · Service Assurance</div>
+    <div class="brand-title">Net<span class="brand-accent">Graph</span></div>
+    <div class="brand-sub">Dígrafo de Topologia de Rede · Grafos + Markov + Bayes + ML</div>
+  </div>
+  <div style="flex:1;display:flex;justify-content:center;min-width:0;">
+    <div id="nav-tabs">
+      <button class="nav-btn active" data-screen="topology">&#9672; Topologia</button>
+      <button class="nav-btn" data-screen="alerts">&#9888; Alertas</button>
+      <button class="nav-btn" data-screen="capacity">&#128202; Capacidade</button>
+      <button class="nav-btn" data-screen="assistant">&#129302; Assistente</button>
+      <button class="nav-btn" data-screen="restricted" style="color:#FF6B5B;" title="Consulta individual de elemento de rede até nível de ONT/assinante — acesso restrito, com log de auditoria">&#128274; Individual</button>
+    </div>
+  </div>
+  <button class="nav-btn sidebar-toggle-btn" id="detail-sidebar-toggle-btn" onclick="_toggleSidebar('detail-sidebar')" title="Legenda e Detalhe do Nó" style="margin-left:auto;flex-shrink:0;">&#9776;</button>
+  <a href="../index.html" style="background:transparent;border:1px solid #2A4A6F;color:#8ABEDF;font-weight:600;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-family:Arial,sans-serif;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;flex-shrink:0;" title="Voltar à lounge de soluções">&#8592; Lounge</a>
+</div>
+
+<div id="sidebar-backdrop" onclick="_closeAllSidebars()"></div>
+
+<div id="metrics"></div>
+
+<div id="main">
+
+  <div id="left-col">
+    <div class="fb-group">
+      <div class="fb-label">Zona / POP</div>
+      <div id="zone-list"></div>
+    </div>
+    <div class="fb-group">
+      <div class="fb-label">Nível de detalhe</div>
+      <button class="fbtn" id="detail-macro-btn" onclick="setDetailLevel('macro')">Macro (até OLT)</button>
+      <button class="fbtn" id="detail-full-btn" onclick="setDetailLevel('full')">Completo (até CTO)</button>
+    </div>
+    <div class="fb-group">
+      <div class="fb-label">Estado de saúde</div>
+      <button class="fbtn active" id="health-filter-todos" onclick="setHealthFilter('todos')">Todos</button>
+      <button class="fbtn" id="health-filter-problema" onclick="setHealthFilter('problema')">Só com problema</button>
+    </div>
+    <div class="fb-group" style="font-size:10.5px;color:#567898;line-height:1.5;">
+      &#8505; Dados 100% sintéticos e determinísticos (seed fixa), para fins de demonstração comercial. Os modelos analíticos (Markov, Bayes, outlier, regressão) são cálculos reais sobre essa base sintética.
+    </div>
+  </div>
+
+  <div id="center">
+    <div class="screen active" id="screen-topology">
+      <svg id="graph-svg"></svg>
+      <div class="tooltip" id="tooltip"></div>
+    </div>
+    <div class="screen" id="screen-alerts">
+      <div class="alerts-layout">
+        <div id="alerts-content" class="alerts-col-main"></div>
+        <div id="alerts-assist-box" class="alerts-col-side"></div>
+      </div>
+    </div>
+    <div class="screen" id="screen-capacity">
+      <div id="capacity-content"></div>
+    </div>
+    <div class="screen" id="screen-assistant">
+      <div id="assistant-content" style="height:100%"></div>
+    </div>
+    <div class="screen" id="screen-restricted">
+      <div id="restricted-content"></div>
+    </div>
+  </div>
+
+  <div id="detail-sidebar">
+    <div class="ds-title">Legenda — Estado de Saúde</div>
+    <div class="leg-item"><span class="leg-dot" style="background:#2ECC71"></span>Saudável</div>
+    <div class="leg-item"><span class="leg-dot" style="background:#E8B800"></span>Degradado</div>
+    <div class="leg-item"><span class="leg-dot" style="background:#E87000"></span>Crítico</div>
+    <div class="leg-item"><span class="leg-dot" style="background:#FF4444"></span>Falha</div>
+    <div class="leg-item"><span class="spof-badge">SPOF</span>ponto único de falha</div>
+    <div class="leg-item"><span class="corp-badge">SLA</span>atende cliente corporativo</div>
+    <div class="ds-title" style="margin-top:14px;">Detalhe do Nó</div>
+    <div id="node-detail">
+      <div style="font-size:11.5px;color:#3A6080;padding:8px 2px;">Clique em um nó do dígrafo para ver capacidade, Markov, outliers e causa provável.</div>
+    </div>
+  </div>
+</div>
+
+<div id="footer">
+  <span id="footer-info">NetGraph · topologia sintética determinística · Grande Florianópolis</span>
+  <span>Vísent OSX Telecomunicações S/A</span>
+</div>
+
+<div id="restricted-overlay">
+  <div class="rst-box">
+    <h2>&#128274; Acesso Restrito — Consulta Individual de Elemento de Rede</h2>
+    <p>Esta tela permite descer o nível de consulta até ONT/CPE e assinante individual associado a uma caixa de atendimento (CTO), fora da visão agregada padrão. Uso previsto: interceptação legal mediante mandado judicial (Lei nº 9.296/1996), apuração de reclamação de Ouvidoria, ou manutenção em profundidade sob SLA de NOC. Toda consulta feita nesta sessão é registrada na trilha de auditoria abaixo. Autenticação meramente ilustrativa — não é controle de acesso de produção.</p>
+    <div class="rst-field">
+      <label>Motivo do acesso</label>
+      <select id="rst-motivo">
+        <option value="">Selecione...</option>
+        <option value="Mandado Judicial (Lei 9.296/1996)">Mandado Judicial — Interceptação Legal (Lei 9.296/1996)</option>
+        <option value="Apuração de Ouvidoria">Apuração de Ouvidoria (reclamação de assinante)</option>
+        <option value="Manutenção SLA NOC">Manutenção em Profundidade — SLA NOC</option>
+      </select>
+    </div>
+    <div class="rst-field">
+      <label>Protocolo / Referência (obrigatório)</label>
+      <input type="text" id="rst-protocolo" placeholder="ex.: número do mandado, protocolo de ouvidoria, chamado NOC...">
+    </div>
+    <div class="rst-field">
+      <label>Senha de acesso restrito</label>
+      <input type="password" id="rst-senha" placeholder="••••••••" onkeydown="if(event.key==='Enter')rstAuthenticate();">
+    </div>
+    <div class="rst-err" id="rst-err"></div>
+    <div class="rst-actions">
+      <button class="rst-submit" onclick="rstAuthenticate()">Autenticar</button>
+      <button class="rst-cancel" onclick="rstGateClose()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════════
+   NETGRAPH — Vísent CDRView ISP Edition — Service Assurance Inteligente
+   Réplica arquitetural do JourneyGraph (dígrafo D3 força-dirigida, sidebars,
+   Alertas, Consulta Individual restrita, Assistente RAG) aplicada a
+   topologia de rede de ISP em vez de jornada de assinante.
+
+   DISCLAIMER DE HONESTIDADE METODOLÓGICA (leia antes de alterar os cálculos
+   abaixo): diferente do JourneyGraph — cujo Anexo B admite explicitamente
+   que "causa provável" e Assistente são heurísticas de score e mock por
+   palavras-chave, não Bayes/Markov reais — o NetGraph calcula, client-side
+   e em JavaScript puro, modelos matematicamente reais (ainda que
+   simplificados) sobre uma base 100% sintética e determinística: matriz de
+   transição de Markov estimada por contagem de transições observadas, rede
+   Bayesiana simplificada (naive Bayes) com posterior calculado, detector de
+   outlier por z-score robusto (MAD), e regressão linear real com intervalo
+   de confiança para projeção de capacidade. Os DADOS são fictícios; os
+   MÉTODOS não são heurísticas disfarçadas. Isso é dito explicitamente na
+   aba Assistente.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── PRNG determinística (mulberry32, semeada por string) — mesma técnica
+   já usada no JourneyGraph para a Consulta Individual, aqui usada para
+   gerar TODA a topologia e séries temporais de forma reprodutível. ── */
+function seedRng(str){
+  var h = 1779033703 ^ str.length;
+  for(var i=0;i<str.length;i++){
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h<<13) | (h>>>19);
+  }
+  return function(){
+    h = Math.imul(h ^ (h>>>16), 2246822507);
+    h = Math.imul(h ^ (h>>>13), 3266489909);
+    h ^= h>>>16;
+    return (h>>>0)/4294967296;
+  };
+}
+function shuffleN(arr, n, rng){
+  var a=arr.slice();
+  for(var i=a.length-1;i>0;i--){ var j=Math.floor(rng()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; }
+  return a.slice(0,n);
+}
+function gaussish(rng){ return (rng()+rng()+rng()+rng()-2)/2; } /* aprox. normal(0,1) via soma de uniformes */
+
+/* ── ZONAS GEOGRÁFICAS — reaproveitadas do StepGraph (Grande Florianópolis),
+   mesmo ISP fictício visto por múltiplas lentes na Lounge. ── */
+var ZONES = [
+  {id:"centro",     label:"Centro"},
+  {id:"trindade",   label:"Trindade / UFSC"},
+  {id:"ingleses",   label:"Ingleses (Norte da Ilha)"},
+  {id:"lagoa",      label:"Lagoa da Conceição"},
+  {id:"continente", label:"Estreito / Continente"},
+  {id:"saojose",    label:"São José (Kobrasol)"},
+  {id:"palhoca",    label:"Palhoça (Centro)"},
+  {id:"campeche",   label:"Campeche (Sul da Ilha)"}
+];
+
+var STATE_ORDER = ["saudavel","degradado","critico","falha"];
+var STATE_LABEL = {saudavel:"Saudável",degradado:"Degradado",critico:"Crítico",falha:"Falha"};
+var STATE_COLOR = {saudavel:"#2ECC71",degradado:"#E8B800",critico:"#E87000",falha:"#FF4444"};
+
+/* ── CAUSAS CANDIDATAS DA REDE BAYESIANA (§5.3) — priors a partir de
+   frequência histórica sintética de um log de incidentes fictício. ── */
+var CAUSES = [
+  {id:"rompimento_fibra",     label:"Rompimento de fibra",                 prior:0.22},
+  {id:"falha_energia",        label:"Falha de energia/UPS no POP",         prior:0.10},
+  {id:"sobrecarga_olt",       label:"Sobrecarga de OLT",                   prior:0.20},
+  {id:"falha_equipamento",    label:"Falha de equipamento ativo",          prior:0.16},
+  {id:"anomalia_trafego",     label:"Ataque/anomalia de tráfego",          prior:0.12},
+  {id:"degradacao_upstream",  label:"Degradação de trânsito upstream",     prior:0.20}
+];
+/* Likelihood P(evidência=presente | causa) — tabela a priori plausível para
+   um ISP regional; ver bayesCauses() para a leitura de evidências reais do
+   nó/alerta e o cálculo do posterior via Bayes ingênuo (naive Bayes). */
+var CAUSE_LIKELIHOOD = {
+  rompimento_fibra:    {isSpof:0.92, singleLeafAffected:0.85, lossOutlier:0.90, latOutlier:0.55, utilDrop:0.70, wideBlast:0.08, olfOrPon:0.15, coreOrPop:0.03},
+  falha_energia:        {isSpof:0.55, singleLeafAffected:0.10, lossOutlier:0.80, latOutlier:0.75, utilDrop:0.85, wideBlast:0.80, olfOrPon:0.20, coreOrPop:0.85},
+  sobrecarga_olt:       {isSpof:0.30, singleLeafAffected:0.15, lossOutlier:0.45, latOutlier:0.70, utilDrop:0.05, wideBlast:0.35, olfOrPon:0.80, coreOrPop:0.10},
+  falha_equipamento:    {isSpof:0.65, singleLeafAffected:0.40, lossOutlier:0.85, latOutlier:0.60, utilDrop:0.90, wideBlast:0.45, olfOrPon:0.60, coreOrPop:0.25},
+  anomalia_trafego:     {isSpof:0.15, singleLeafAffected:0.20, lossOutlier:0.50, latOutlier:0.80, utilDrop:0.02, wideBlast:0.30, olfOrPon:0.55, coreOrPop:0.20},
+  degradacao_upstream:  {isSpof:0.10, singleLeafAffected:0.03, lossOutlier:0.35, latOutlier:0.88, utilDrop:0.05, wideBlast:0.92, olfOrPon:0.05, coreOrPop:0.90}
+};
+
+var RNG = seedRng("netgraph-visent-cdrview-2026");
+
+/* ════════════════════════════════════════════════════════════════════════
+   GERAÇÃO DA TOPOLOGIA (determinística) — POP → OLT → PON/Splitter → CTO
+   ════════════════════════════════════════════════════════════════════════ */
+var NODES = {};      /* id -> node */
+var EDGES = [];       /* {id,source,target,type,capacityMbps,redundant} */
+var CHILDREN = {};    /* id -> [childIds] */
+var PARENT = {};      /* id -> parentId */
+
+function pick(arr,rng){ return arr[Math.floor(rng()*arr.length)]; }
+function randRange(rng,lo,hi){ return lo+rng()*(hi-lo); }
+function randInt(rng,lo,hi){ return lo+Math.floor(rng()*(hi-lo+1)); }
+
+var N_HOURS = 60; /* série sintética horária, últimas 60h — janela usada por Markov/outlier/regressão */
+
+function genBaselineSeries(rng, baseUtil, baseLat, baseLoss, growthPerHour){
+  var util=[], lat=[], loss=[];
+  for(var t=0;t<N_HOURS;t++){
+    var u = baseUtil + (growthPerHour||0)*t + gaussish(rng)*3.2;
+    var l = baseLat + gaussish(rng)*3.5;
+    var p = Math.max(0, baseLoss + gaussish(rng)*0.12);
+    util.push(Math.max(1,Math.min(140,u)));
+    lat.push(Math.max(1,l));
+    loss.push(Math.max(0,p));
+  }
+  return {util:util,lat:lat,loss:loss};
+}
+
+/* Cada cenário injeta um padrão realista e diferenciado na série sintética
+   — usado depois tanto para classificar estado (Markov) quanto para o
+   detector de outlier (§5.4) e como evidência da rede Bayesiana (§5.3). */
+function applyScenario(series, scenario, rng){
+  var n=series.util.length;
+  if(scenario==="crescimento_organico"){
+    var amp=randRange(rng,28,46);
+    for(var t=0;t<n;t++) series.util[t]=Math.min(140, series.util[t] + amp*(t/(n-1)));
+  } else if(scenario==="sobrecarga_olt"){
+    var amp2=randRange(rng,42,60);
+    for(var t2=0;t2<n;t2++){
+      series.util[t2]=Math.min(150, series.util[t2] + amp2*Math.pow(t2/(n-1),1.4));
+      if(series.util[t2]>90){ series.lat[t2]+=(series.util[t2]-90)*1.8; series.loss[t2]+=(series.util[t2]-90)*0.12; }
+    }
+  } else if(scenario==="rompimento_fibra"){
+    var t0=randInt(rng,n-14,n-3);
+    for(var t3=t0;t3<n;t3++){
+      series.loss[t3]=randRange(rng,35,85);
+      series.lat[t3]=randRange(rng,180,420);
+      series.util[t3]=series.util[t3]*randRange(rng,0.05,0.25);
+    }
+  } else if(scenario==="falha_equipamento"){
+    var t1=randInt(rng,n-10,n-2);
+    for(var t4=t1;t4<n;t4++){
+      series.loss[t4]=randRange(rng,70,100);
+      series.lat[t4]=randRange(rng,400,999);
+      series.util[t4]=series.util[t4]*randRange(rng,0,0.08);
+    }
+  } else if(scenario==="falha_energia"){
+    var t5=randInt(rng,n-9,n-2);
+    for(var t6=t5;t6<n;t6++){
+      series.loss[t6]=randRange(rng,55,95);
+      series.lat[t6]=randRange(rng,250,700);
+      series.util[t6]=series.util[t6]*randRange(rng,0,0.15);
+    }
+  } else if(scenario==="anomalia_trafego"){
+    for(var t7=n-16;t7<n;t7++){
+      if(rng()<0.45){ series.util[t7]=Math.min(160, series.util[t7]+randRange(rng,35,70)); series.lat[t7]+=randRange(rng,20,90); }
+    }
+  } else if(scenario==="degradacao_upstream"){
+    var amp3=randRange(rng,60,120);
+    for(var t8=0;t8<n;t8++){ series.lat[t8]=series.lat[t8] + amp3*(t8/(n-1)); }
+  }
+  return series;
+}
+
+function classifyState(type, util, lat, loss){
+  /* Limiares por natureza da métrica no nível (banda para core/pop/olt,
+     ocupação de portas para pon/cto) — aplicados de forma consistente para
+     alimentar a mesma máquina de estados em toda a hierarquia. */
+  if(loss>=60 || lat>=350 || util>=140) return "falha";
+  if(loss>=15 || lat>=180 || util>=99)  return "critico";
+  if(loss>=3  || lat>=90  || util>=82)  return "degradado";
+  return "saudavel";
+}
+
+function makeNode(id, type, label, zone, opts){
+  var n = Object.assign({id:id,type:type,label:label,zone:zone||null}, opts||{});
+  NODES[id]=n; CHILDREN[id]=[];
+  return n;
+}
+function link(parentId, childId, type, capacityMbps, redundant){
+  PARENT[childId]=parentId;
+  CHILDREN[parentId]=CHILDREN[parentId]||[];
+  CHILDREN[parentId].push(childId);
+  EDGES.push({id:parentId+"__"+childId, source:parentId, target:childId, type:type, capacityMbps:capacityMbps, redundant:!!redundant});
+}
+
+(function generateTopology(){
+  /* Core / Backbone — 2 roteadores de borda (trânsito IP upstream) */
+  makeNode("core-1","core","Borda Upstream A",null,{capacityMbps:100000,slaTier:"backbone",provider:"Trânsito IP — Provedor Upstream A"});
+  makeNode("core-2","core","Borda Upstream B",null,{capacityMbps:100000,slaTier:"backbone",provider:"Trânsito IP — Provedor Upstream B"});
+
+  var oltIds=[], ponIds=[], ctoIds=[];
+
+  ZONES.forEach(function(z, zi){
+    var popId="pop-"+z.id;
+    makeNode(popId,"pop","POP "+z.label,z.id,{capacityMbps:randInt(RNG,8000,15000),slaTier:"agregacao"});
+    /* 3 dos 8 POPs recebem uplink duplo (dual-homed) para os dois roteadores
+       de borda — os demais são single-homed (SPOF explícito no enlace de
+       uplink), coerente com a realidade de custo de redes regionais. */
+    var dualHomed = zi%3===0;
+    link("core-1", popId, "uplink-fibra", 10000, dualHomed);
+    if(dualHomed) link("core-2", popId, "uplink-fibra", 10000, true);
+
+    var nOlt = randInt(RNG,2,4);
+    for(var oi=0; oi<nOlt; oi++){
+      var oltId = "olt-"+z.id+"-"+oi;
+      makeNode(oltId,"olt","OLT "+z.label+" #"+(oi+1),z.id,{capacityMbps:randInt(RNG,2500,10000)});
+      link(popId, oltId, "fibra-distribuicao", 2500, false);
+      oltIds.push(oltId);
+
+      var nPon = randInt(RNG,2,4);
+      for(var pi=0; pi<nPon; pi++){
+        var ponId = oltId+"-p"+pi;
+        var ponPorts = pick([16,32,64],RNG);
+        makeNode(ponId,"pon","PON "+z.label+" "+(oi+1)+"."+(pi+1),z.id,{capacityPorts:ponPorts});
+        link(oltId, ponId, "splitter-optico", null, false);
+        ponIds.push(ponId);
+
+        var nCto = randInt(RNG,2,5);
+        for(var ci=0; ci<nCto; ci++){
+          var ctoId = ponId+"-c"+ci;
+          var ctoPorts = pick([8,16],RNG);
+          var subs = randInt(RNG,8,Math.min(40,ctoPorts*4));
+          var corporate = RNG()<0.09;
+          makeNode(ctoId,"cto","CTO "+z.label+" "+(oi+1)+"."+(pi+1)+"."+(ci+1),z.id,{
+            capacityPorts:ctoPorts, subscribers:subs, corporate:corporate
+          });
+          link(ponId, ctoId, "drop-fibra", null, false);
+          ctoIds.push(ctoId);
+        }
+      }
+    }
+  });
+
+  /* ── Séries temporais + cenário por nó (baseline "estável" para todos,
+     sobrescrita por um cenário de incidente/crescimento num subconjunto
+     escolhido deterministicamente — ver comentário no topo do arquivo). */
+  function baselineFor(type){
+    if(type==="core") return {util:randRange(RNG,32,45), lat:randRange(RNG,6,12), loss:randRange(RNG,0.01,0.05)};
+    if(type==="pop")  return {util:randRange(RNG,38,58), lat:randRange(RNG,8,16), loss:randRange(RNG,0.02,0.08)};
+    if(type==="olt")  return {util:randRange(RNG,42,68), lat:randRange(RNG,10,22), loss:randRange(RNG,0.03,0.15)};
+    if(type==="pon")  return {util:randRange(RNG,45,70), lat:randRange(RNG,12,20), loss:randRange(RNG,0.02,0.10)};
+    return               {util:randRange(RNG,25,65), lat:randRange(RNG,14,26), loss:randRange(RNG,0.02,0.12)};
+  }
+  Object.keys(NODES).forEach(function(id){
+    var n=NODES[id];
+    var b=baselineFor(n.type);
+    n.scenario="estavel";
+    n.series=genBaselineSeries(RNG, b.util, b.lat, b.loss, 0);
+  });
+
+  /* Atribuição sequencial de cenário "incidente" a um subconjunto de nós,
+     escolhido de forma determinística (RNG semeada) e sem repetir nó entre
+     categorias — cada draw consome da lista ainda não usada da categoria. */
+  var usedOlt = [];
+  function drawOlt(n){ var avail=oltIds.filter(function(id){return usedOlt.indexOf(id)<0;}); var picked=shuffleN(avail,n,RNG); usedOlt=usedOlt.concat(picked); return picked; }
+
+  var incidentAssignments = [];
+  incidentAssignments.push({ids:["core-2"], scenario:"degradacao_upstream"});
+  incidentAssignments.push({ids:shuffleN(ZONES.map(function(z){return "pop-"+z.id;}),1,RNG), scenario:"falha_energia"});
+  incidentAssignments.push({ids:drawOlt(3), scenario:"sobrecarga_olt"});
+  incidentAssignments.push({ids:drawOlt(2), scenario:"crescimento_organico"});
+  incidentAssignments.push({ids:drawOlt(2), scenario:"falha_equipamento"});
+  incidentAssignments.push({ids:shuffleN(ponIds,3,RNG), scenario:"anomalia_trafego"});
+  incidentAssignments.push({ids:shuffleN(ctoIds,4,RNG), scenario:"rompimento_fibra"});
+
+  incidentAssignments.forEach(function(a){
+    a.ids.forEach(function(id){
+      var n=NODES[id];
+      if(!n) return;
+      n.scenario=a.scenario;
+      applyScenario(n.series, a.scenario, RNG);
+    });
+  });
+
+  /* Estado atual e sequência de estados (para Markov) por nó, a partir da
+     série sintética recém-gerada. */
+  Object.keys(NODES).forEach(function(id){
+    var n=NODES[id];
+    n.states = n.series.util.map(function(u,t){ return classifyState(n.type, u, n.series.lat[t], n.series.loss[t]); });
+    n.health = n.states[n.states.length-1];
+    n.util = n.series.util[n.series.util.length-1];
+    n.lat = n.series.lat[n.series.lat.length-1];
+    n.loss = n.series.loss[n.series.loss.length-1];
+    n.uptimePct = n.scenario==="estavel" ? (99.90+RNG()*0.09) : (n.health==="falha"?randRange(RNG,94,98.5):randRange(RNG,97,99.8));
+  });
+
+  /* Subscritores dependentes (downstream) e presença de cliente corporativo
+     — agregados via pós-ordem a partir das folhas (CTO) até o Core. */
+  function aggregateUp(id){
+    var n=NODES[id];
+    var kids=CHILDREN[id]||[];
+    if(n.type==="cto"){
+      n.subsDownstream = n.subscribers;
+      n.hasCorporate = !!n.corporate;
+      return;
+    }
+    var subs=0, corp=false;
+    kids.forEach(function(cid){ aggregateUp(cid); var c=NODES[cid]; subs+=c.subsDownstream||0; corp=corp||!!c.hasCorporate; });
+    n.subsDownstream=subs;
+    n.hasCorporate=corp;
+  }
+  aggregateUp("core-1"); aggregateUp("core-2");
+
+  /* Utilização de portas para PON/CTO, sobrescrevendo a série sintética de
+     "util" desses dois níveis pela ocupação real (subs/portas) — mais fiel
+     ao domínio (splitter óptico e caixa de atendimento não têm "banda",
+     têm portas), mantendo a série de latência/perda geradas para
+     Markov/outlier funcionarem igual em todos os níveis. */
+  Object.keys(NODES).forEach(function(id){
+    var n=NODES[id];
+    if(n.type==="cto"){ n.portsUsed=n.subscribers; n.portOccupancyPct=Math.round(100*n.subscribers/n.capacityPorts); }
+    if(n.type==="pon"){ var kids=CHILDREN[id]||[]; n.portsUsed=kids.length; n.portOccupancyPct=Math.round(100*kids.length/n.capacityPorts); }
+  });
+})();
+
+/* ════════════════════════════════════════════════════════════════════════
+   §5.1 CAMADA DE GRAFOS — centralidade, SPOF, blast radius
+   ════════════════════════════════════════════════════════════════════════ */
+var TOTAL_NODE_COUNT = Object.keys(NODES).length;
+
+/* subtreeCache: para cada nó, todos os ids descendentes (inclui o próprio). */
+var _subtreeCache = {};
+function subtreeIds(id){
+  if(_subtreeCache[id]) return _subtreeCache[id];
+  var out=[id];
+  (CHILDREN[id]||[]).forEach(function(c){ out=out.concat(subtreeIds(c)); });
+  _subtreeCache[id]=out;
+  return out;
+}
+
+/* Centralidade — em uma topologia predominantemente arborescente (POP→OLT→
+   PON→CTO), o número de pares de nós cujo caminho mais curto passa por um
+   nó v é, para uma árvore, size_below(v) × (N − size_below(v)), onde
+   size_below(v) é o tamanho da subárvore enraizada em v. Usamos essa
+   fórmula fechada como proxy de "betweenness" (não Isolation Forest nem
+   Brandes completo) — simplificação assumida e documentada aqui, válida
+   porque os únicos ciclos da topologia (uplinks duplos de POP) são raros
+   e não alteram materialmente a ordenação de centralidade dos nós de
+   acesso, que é o que importa para priorização de alerta. */
+function centralityScore(id){
+  var below = subtreeIds(id).length;
+  var raw = below*(TOTAL_NODE_COUNT-below);
+  var maxRaw = Math.pow(TOTAL_NODE_COUNT/2,2); /* valor máximo teórico da fórmula acima */
+  return Math.round(1000*raw/maxRaw)/10; /* normalizado 0–100 */
+}
+
+/* SPOF: um nó é ponto único de falha se, subindo a árvore até o Core, existe
+   ALGUMA aresta sem redundância configurada no caminho — ou seja, existe
+   um ponto de corte que isola esse nó de todo o backbone. */
+function isSPOF(id){
+  var cur=id;
+  while(PARENT[cur]){
+    var e = EDGES.find(function(e){ return e.target===cur; });
+    if(e && !e.redundant) return true;
+    cur = PARENT[cur];
+  }
+  return false;
+}
+
+/* Blast radius (§5.1): assinantes/nós afetados por uma falha em `id`, via
+   travessia (DFS/BFS) de todos os descendentes. */
+function blastRadius(id){
+  var ids = subtreeIds(id);
+  var subs=0, zones={}, corporate=false;
+  ids.forEach(function(nid){
+    var n=NODES[nid];
+    if(n.type==="cto"){ subs+=n.subscribers; corporate=corporate||!!n.corporate; }
+    if(n.zone) zones[n.zone]=true;
+  });
+  return {nodeIds:ids, subsAffected:subs, zones:Object.keys(zones), hasCorporate:corporate};
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   §5.2 CAMADA DE MARKOV — matriz de transição estimada a partir dos dados
+   ════════════════════════════════════════════════════════════════════════
+   Para cada CLASSE de nó (core/pop/olt/pon/cto), agrupamos as sequências de
+   estado hora-a-hora de TODOS os nós dessa classe e contamos as transições
+   observadas (s_t → s_{t+1}). A matriz é a contagem normalizada por linha
+   (com suavização de Laplace +0.5 para evitar linhas de zero absoluto em
+   classes com poucos incidentes) — isto é uma matriz de transição estimada
+   por máxima verossimilhança sobre dados, não uma cor fixa por limiar. */
+var MARKOV = {};
+function estimateMarkovMatrix(type){
+  if(MARKOV[type]) return MARKOV[type];
+  var K=STATE_ORDER.length;
+  var counts=[]; for(var i=0;i<K;i++) counts.push(new Array(K).fill(0.5)); /* Laplace smoothing */
+  Object.keys(NODES).forEach(function(id){
+    var n=NODES[id];
+    if(n.type!==type) return;
+    for(var t=0;t<n.states.length-1;t++){
+      var a=STATE_ORDER.indexOf(n.states[t]), b=STATE_ORDER.indexOf(n.states[t+1]);
+      counts[a][b]++;
+    }
+  });
+  var M = counts.map(function(row){
+    var sum = row.reduce(function(s,v){return s+v;},0);
+    return row.map(function(v){ return v/sum; });
+  });
+  MARKOV[type]=M;
+  return M;
+}
+function matVec(M, v){
+  return M[0].map(function(_,j){
+    var s=0; for(var i=0;i<v.length;i++) s+=v[i]*M[i][j];
+    return s;
+  });
+}
+function matPow(M, k){
+  var K=M.length;
+  var R = M.map(function(row,i){ return row.map(function(v,j){ return i===j?1:0; }); }); /* identidade */
+  for(var s=0;s<k;s++){
+    var next=[];
+    for(var i=0;i<K;i++){
+      next.push(R[i].map(function(_,j){
+        var acc=0; for(var m=0;m<K;m++) acc+=R[i][m]*M[m][j];
+        return acc;
+      }));
+    }
+    R=next;
+  }
+  return R;
+}
+/* P(nó transita para estado pior nas próximas `hoursAhead` horas | estado
+   atual) — multiplica o vetor one-hot do estado atual pela `hoursAhead`-ésima
+   potência da matriz de transição da classe do nó (cadeia homogênea, passo
+   = 1 hora, mesma granularidade da série sintética). */
+function markovPredict(node, hoursAhead){
+  var M = estimateMarkovMatrix(node.type);
+  var Mk = matPow(M, hoursAhead);
+  var s0 = STATE_ORDER.indexOf(node.health);
+  var dist = Mk[s0];
+  var pWorse = 0;
+  for(var i=s0+1;i<STATE_ORDER.length;i++) pWorse+=dist[i];
+  return {matrix:M, dist:dist, pWorse:pWorse, stateNow:node.health, hoursAhead:hoursAhead};
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   §5.4 CAMADA DE ML — detector de outlier real (z-score robusto / MAD)
+   ════════════════════════════════════════════════════════════════════════
+   Mediana e MAD (median absolute deviation) são estatísticas robustas a
+   outliers (ao contrário de média/desvio padrão clássicos) — padrão comum
+   em detecção de anomalia univariada. z_robusto = 0.6745*(x−mediana)/MAD;
+   |z|>3.5 é o limiar convencional (Iglewicz & Hoya, 1993) para "outlier
+   estatisticamente significativo", aplicado aqui de fato sobre a série,
+   não um limiar fixo de negócio disfarçado de "ML". */
+function median(arr){
+  var s=arr.slice().sort(function(a,b){return a-b;});
+  var n=s.length;
+  return n%2 ? s[(n-1)/2] : (s[n/2-1]+s[n/2])/2;
+}
+function robustOutliers(series){
+  var med = median(series);
+  var absDev = series.map(function(x){ return Math.abs(x-med); });
+  var mad = median(absDev) || 1e-6;
+  var z = series.map(function(x){ return 0.6745*(x-med)/mad; });
+  var isOutlier = z.map(function(v){ return Math.abs(v)>3.5; });
+  return {median:med, mad:mad, z:z, isOutlier:isOutlier, lastZ:z[z.length-1], isOutlierNow:isOutlier[isOutlier.length-1]};
+}
+function nodeOutlierFlags(node){
+  return {
+    util: robustOutliers(node.series.util),
+    lat:  robustOutliers(node.series.lat),
+    loss: robustOutliers(node.series.loss)
+  };
+}
+/* Score de outlier combinado 0–100 (usado no índice de risco §5.4). */
+function outlierScore(node){
+  var f = nodeOutlierFlags(node);
+  var mx = Math.max(Math.abs(f.util.lastZ), Math.abs(f.lat.lastZ), Math.abs(f.loss.lastZ));
+  return Math.max(0, Math.min(100, Math.round(mx*12)));
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   §5.4 Predição de capacidade — regressão linear real (mínimos quadrados)
+   sobre a série de utilização, com intervalo de confiança na projeção.
+   ════════════════════════════════════════════════════════════════════════ */
+function linreg(xs, ys){
+  var n=xs.length;
+  var mx=xs.reduce(function(a,b){return a+b;},0)/n;
+  var my=ys.reduce(function(a,b){return a+b;},0)/n;
+  var sxy=0, sxx=0;
+  for(var i=0;i<n;i++){ sxy+=(xs[i]-mx)*(ys[i]-my); sxx+=(xs[i]-mx)*(xs[i]-mx); }
+  var b = sxx===0?0:sxy/sxx;
+  var a = my-b*mx;
+  var sse=0;
+  for(var j=0;j<n;j++){ var pred=a+b*xs[j]; sse+=(ys[j]-pred)*(ys[j]-pred); }
+  var dof=Math.max(1,n-2);
+  var mse=sse/dof;
+  var seB = sxx===0?0:Math.sqrt(mse/sxx);
+  var sst=ys.reduce(function(s,y){return s+(y-my)*(y-my);},0);
+  var r2 = sst===0?1:1-(sse/sst);
+  return {a:a,b:b,seB:seB,mse:mse,r2:r2,n:n};
+}
+/* Projeta quando a utilização cruza `thresholdPct` (padrão 90%), com banda
+   de confiança de ~95% (±1.96·erro-padrão do coeficiente angular) sobre o
+   instante de cruzamento — regressão real, não um número decorativo. */
+function capacityProjection(node, thresholdPct){
+  thresholdPct = thresholdPct||90;
+  var xs=node.series.util.map(function(_,i){return i;});
+  var ys=node.series.util;
+  var reg = linreg(xs, ys);
+  var lastT = xs.length-1;
+  var lastVal = ys[ys.length-1];
+  var alreadyAbove = lastVal>=thresholdPct;
+  if(reg.b<=0.02){
+    return {hasProjection:false, reg:reg, alreadyAbove:alreadyAbove, reason: alreadyAbove ? "Já em ou acima do limiar, sem tendência de crescimento clara na janela observada — projeção de regressão não se aplica; ação é imediata, não preditiva." : "Sem tendência de crescimento estatisticamente relevante na janela observada (60h)."};
+  }
+  var tCross = (thresholdPct - reg.a) / reg.b;
+  var bLow = reg.b - 1.96*reg.seB;
+  var bHigh = reg.b + 1.96*reg.seB;
+  var tCrossOptimistic = bHigh>0.001 ? (thresholdPct-reg.a)/bHigh : Infinity; /* cresce mais rápido → satura antes */
+  var tCrossPessimistic = bLow>0.001 ? (thresholdPct-reg.a)/bLow : Infinity;  /* cresce mais devagar → satura depois */
+  var hoursFromNow = (tCross - lastT);
+  var hoursFromNowLow = (tCrossOptimistic - lastT);
+  var hoursFromNowHigh = (tCrossPessimistic - lastT);
+  function toDate(hoursAhead){
+    if(!isFinite(hoursAhead)) return null;
+    var d=new Date(NOW_TS + hoursAhead*3600*1000);
+    return d;
+  }
+  if(alreadyAbove || hoursFromNow<=0 || !isFinite(hoursFromNow)){
+    return {hasProjection:false, reg:reg, alreadyAbove:alreadyAbove, reason: alreadyAbove ? "Já em ou acima do limiar (≥"+thresholdPct+"%) — ação imediata recomendada, não uma projeção futura." : "Ponto de cruzamento projetado no passado dentro do ruído da regressão; sem projeção futura confiável."};
+  }
+  return {
+    hasProjection: true,
+    reg:reg, thresholdPct:thresholdPct,
+    hoursFromNow:hoursFromNow,
+    etaDate: toDate(hoursFromNow),
+    ciLowDate: toDate(hoursFromNowLow),
+    ciHighDate: toDate(hoursFromNowHigh),
+    alreadyAbove: alreadyAbove
+  };
+}
+var NOW_TS = Date.UTC(2026,7,2,12,0,0); /* âncora determinística: 2026-08-02 12:00 UTC */
+
+/* ════════════════════════════════════════════════════════════════════════
+   §5.3 CAMADA BAYESIANA — isolamento de causa raiz (naive Bayes)
+   ════════════════════════════════════════════════════════════════════════
+   Evidência binária extraída do nó/alerta real (não inventada): SPOF no
+   caminho, se só uma folha foi afetada (blast radius pequeno) ou uma área
+   larga (blast radius grande), outlier de perda/latência, queda de
+   utilização (sinal de "parou de passar tráfego"), tipo do nó (core/pop vs
+   olt/pon). Posterior(causa) ∝ prior(causa) × Π P(evidência_i | causa),
+   usando o valor complementar (1−p) quando a evidência está ausente —
+   Bayes ingênuo (naive Bayes) clássico, calculado de verdade a cada nó. */
+function bayesCauses(node){
+  var out=nodeOutlierFlags(node);
+  var br=blastRadius(node.id);
+  var util0=node.series.util[Math.max(0,node.series.util.length-6)];
+  var utilNow=node.util;
+  var ev = {
+    isSpof: isSPOF(node.id),
+    singleLeafAffected: br.subsAffected>0 && br.subsAffected<=40,
+    lossOutlier: out.loss.isOutlierNow,
+    latOutlier: out.lat.isOutlierNow,
+    utilDrop: (utilNow < util0*0.5) && (node.type==="cto"?false:true),
+    wideBlast: br.subsAffected>=300 || br.zones.length>=2,
+    olfOrPon: node.type==="olt"||node.type==="pon",
+    coreOrPop: node.type==="core"||node.type==="pop"
+  };
+  var posts = CAUSES.map(function(c){
+    var lk = CAUSE_LIKELIHOOD[c.id];
+    var p = c.prior;
+    Object.keys(lk).forEach(function(k){
+      var pTrue = lk[k];
+      p *= ev[k] ? pTrue : (1-pTrue);
+    });
+    return {id:c.id, label:c.label, raw:p};
+  });
+  var total = posts.reduce(function(s,p){return s+p.raw;},0) || 1e-9;
+  posts.forEach(function(p){ p.prob = p.raw/total; });
+  posts.sort(function(a,b){ return b.prob-a.prob; });
+  return {posterior:posts, evidence:ev, top:posts[0]};
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Índice de risco combinado (§5.4): Markov + outlier + centralidade
+   ════════════════════════════════════════════════════════════════════════ */
+function riskIndex(node){
+  var mk = markovPredict(node, 4);
+  var out = outlierScore(node);
+  var cent = centralityScore(node.id);
+  var spofBonus = isSPOF(node.id)?15:0;
+  var score = Math.round(mk.pWorse*100*0.35 + out*0.30 + cent*0.20 + spofBonus*0.15 +
+    (node.health==="critico"?10:node.health==="falha"?20:0));
+  return Math.max(0, Math.min(100, score));
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   §6.2/6.3 — CRM (Call Center) e Ouvidoria/Anatel sintéticos, correlacionados
+   por zona/tempo com os alertas de rede (para o Assistente responder "isso
+   já virou reclamação?" cruzando timestamp/zona, e para o score de impacto
+   de negócio em §5.5).
+   ════════════════════════════════════════════════════════════════════════ */
+var CRM_CATEGORIES = ["lentidao","queda_conexao","sem_sinal"];
+var CRM = {}; /* zoneId -> {lentidao:n, queda_conexao:n, sem_sinal:n, total:n} */
+(function genCRM(){
+  var rngCrm = seedRng("netgraph-crm-2026");
+  ZONES.forEach(function(z){
+    var base = {lentidao:randInt(rngCrm,3,18), queda_conexao:randInt(rngCrm,2,14), sem_sinal:randInt(rngCrm,1,9)};
+    /* zonas com nó em falha/crítico recebem reforço de reclamações — a
+       correlação é intencional (mesma lógica de negócio descrita no §6.2:
+       incidente de rede não resolvido a tempo tende a gerar chamado). */
+    var hasBadNode = Object.keys(NODES).some(function(id){
+      var n=NODES[id];
+      return n.zone===z.id && (n.health==="critico"||n.health==="falha");
+    });
+    if(hasBadNode){
+      base.lentidao += randInt(rngCrm,8,22);
+      base.queda_conexao += randInt(rngCrm,6,20);
+      base.sem_sinal += randInt(rngCrm,3,12);
+    }
+    base.total = base.lentidao+base.queda_conexao+base.sem_sinal;
+    CRM[z.id]=base;
+  });
+})();
+function crmForZone(zoneId){ return CRM[zoneId] || {lentidao:0,queda_conexao:0,sem_sinal:0,total:0}; }
+/* Risco de escalonamento à Ouvidoria/Anatel (§6.3): heurística explícita
+   (não Bayes) que combina volume de reclamação recente na zona com
+   gravidade/SPOF do alerta — usada só para sinalizar, não para o posterior
+   de causa raiz (esse é o bayesCauses acima). */
+function ouvidoriaRisk(node, alertSeverityScore){
+  var crm = crmForZone(node.zone||"");
+  var high = crm.total>=28 && (alertSeverityScore>=55);
+  var medium = crm.total>=16 && (alertSeverityScore>=35);
+  return {level: high?"alto":medium?"medio":"baixo", crmVolume:crm.total};
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   §5.5 CORRELAÇÃO E PRIORIZAÇÃO DE ALERTAS
+   ════════════════════════════════════════════════════════════════════════ */
+var ALERT_STATE = {status:{}, open:null, camada:"todas", classe:"todas", ocultarResolvidos:false};
+var ALERT_STATUS_OPTS = [
+  {id:"novo", label:"Novo"},
+  {id:"em_analise", label:"Em análise"},
+  {id:"encaminhado", label:"Encaminhado ao NOC"},
+  {id:"resolvido", label:"Resolvido"}
+];
+var ALERTS = [];
+function buildAlerts(){
+  var candidates = Object.keys(NODES).filter(function(id){
+    var n=NODES[id];
+    if(n.type==="core") return n.health!=="saudavel";
+    var out = outlierScore(n);
+    var cap = (n.type==="core"||n.type==="pop"||n.type==="olt") ? capacityProjection(n,90) : null;
+    var capSoon = cap && cap.hasProjection && cap.hoursFromNow<=24*45;
+    return n.health!=="saudavel" || out>=42 || capSoon;
+  });
+
+  var list = candidates.map(function(id){
+    var n = NODES[id];
+    var mk = markovPredict(n,4);
+    var by = bayesCauses(n);
+    var br = blastRadius(id);
+    var out = outlierScore(n);
+    var cent = centralityScore(id);
+    var spof = isSPOF(id);
+    var risk = riskIndex(n);
+    var cap = (n.type==="core"||n.type==="pop"||n.type==="olt") ? capacityProjection(n,90) : null;
+
+    /* Gravidade técnica (0–100): estado atual + tendência Markov + outlier
+       + SPOF — cada termo com peso explícito, decomponível na UI (§5.5). */
+    var stateScore = {saudavel:0,degradado:35,critico:70,falha:100}[n.health];
+    var gravidade = Math.round(stateScore*0.40 + mk.pWorse*100*0.25 + out*0.20 + (spof?100:0)*0.15);
+    gravidade = Math.max(0,Math.min(100,gravidade));
+
+    /* Impacto de negócio (0–100): assinantes afetados (log-escala, pois a
+       distribuição de blast radius é muito assimétrica), corporativo/SLA,
+       sobreposição com CRM, risco de escalonamento à Ouvidoria/Anatel. */
+    var subsNorm = Math.min(100, Math.round(100*Math.log10(1+br.subsAffected)/Math.log10(1+3000)));
+    var crm = crmForZone(n.zone||"");
+    var crmNorm = Math.min(100, Math.round(100*crm.total/60));
+    var ouv = ouvidoriaRisk(n, Math.round((stateScore+out)/2));
+    var ouvScore = {alto:100,medio:55,baixo:15}[ouv.level];
+    var impacto = Math.round(subsNorm*0.40 + (br.hasCorporate?100:0)*0.20 + crmNorm*0.20 + ouvScore*0.20);
+    impacto = Math.max(0,Math.min(100,impacto));
+
+    var scoreTotal = Math.round(gravidade*0.5 + impacto*0.5);
+
+    var camada = n.type==="core"||n.type==="pop" ? "Fault Management" : (out>=55?"Performance Management":"Fault Management");
+
+    return {
+      id:"AL-"+id,
+      nodeId:id, node:n,
+      camada:camada,
+      classe: n.type.toUpperCase(),
+      objeto:n.label,
+      indicador: n.type==="pon"||n.type==="cto" ? "Ocupação de portas / perda / latência" : "Utilização de banda / perda / latência",
+      severidade: n.health,
+      gravidade:gravidade, impacto:impacto, score:scoreTotal,
+      markov:mk, bayes:by, blast:br, outlierScore:out, centrality:cent, spof:spof, risk:risk,
+      capacity:cap, crm:crm, ouvidoria:ouv,
+      parentAlertId:null /* preenchido abaixo pela correlação */
+    };
+  });
+
+  /* Correlação por blast radius (§5.5): um alerta cujo nó está DENTRO do
+     blast radius de outro alerta com nó ancestral vira "filho" desse
+     alerta-raiz, em vez de aparecer como incidente independente. */
+  list.forEach(function(a){
+    var cur = PARENT[a.nodeId];
+    while(cur){
+      var parentAlert = list.find(function(x){ return x.nodeId===cur; });
+      if(parentAlert){ a.parentAlertId = parentAlert.id; break; }
+      cur = PARENT[cur];
+    }
+  });
+
+  list.sort(function(a,b){ return b.score-a.score; });
+  ALERTS = list;
+}
+buildAlerts();
+
+/* ════════════════════════════════════════════════════════════════════════
+   ESTADO DE UI / NAVEGAÇÃO ENTRE TELAS
+   ════════════════════════════════════════════════════════════════════════ */
+var UI = {screen:"topology", zone:"all", detailLevel:"macro", healthFilter:"todos", selectedNode:null};
+
+function _toggleSidebar(id){
+  var el=document.getElementById(id);
+  var isOpen=el.classList.contains("sidebar-open");
+  _closeAllSidebars();
+  if(!isOpen){ el.classList.add("sidebar-open"); document.getElementById("sidebar-backdrop").classList.add("show"); }
+}
+function _closeAllSidebars(){
+  document.getElementById("left-col").classList.remove("sidebar-open");
+  document.getElementById("detail-sidebar").classList.remove("sidebar-open");
+  document.getElementById("sidebar-backdrop").classList.remove("show");
+}
+
+document.querySelectorAll(".nav-btn[data-screen]").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    document.querySelectorAll(".nav-btn[data-screen]").forEach(function(b){ b.classList.remove("active"); });
+    btn.classList.add("active");
+    var scr = btn.dataset.screen;
+    UI.screen = scr;
+    document.querySelectorAll(".screen").forEach(function(s){ s.classList.remove("active"); });
+    document.getElementById("screen-"+scr).classList.add("active");
+    document.body.className = "screen-"+scr;
+    _closeAllSidebars();
+    refreshScreen(scr);
+  });
+});
+
+function refreshScreen(scr){
+  if(scr==="topology"){ renderMetrics(); renderZoneList(); renderGraph(); }
+  else if(scr==="alerts"){ renderAlerts(); renderAlertsAssistant(); }
+  else if(scr==="capacity"){ renderCapacity(); }
+  else if(scr==="assistant"){ renderAssistant(); }
+  else if(scr==="restricted"){
+    if(!S_restricted.authed){ rstGateOpen(); }
+    renderRestricted();
+  }
+}
+
+function setDetailLevel(lvl){ UI.detailLevel=lvl; renderZoneList(); renderGraph(); }
+function setHealthFilter(f){
+  UI.healthFilter=f;
+  document.getElementById("health-filter-todos").classList.toggle("active", f==="todos");
+  document.getElementById("health-filter-problema").classList.toggle("active", f==="problema");
+  renderGraph();
+}
+function selectZone(zoneId){ UI.zone=zoneId; renderZoneList(); renderGraph(); }
+
+function renderZoneList(){
+  var el=document.getElementById("zone-list");
+  var html='<div class="zone-item'+(UI.zone==="all"?" active":"")+'" onclick="selectZone(\'all\')">Toda a rede<span class="zone-n">'+ZONES.length+' POPs</span></div>';
+  ZONES.forEach(function(z){
+    var popId="pop-"+z.id;
+    var pop=NODES[popId];
+    html+='<div class="zone-item'+(UI.zone===z.id?" active":"")+'" onclick="selectZone(\''+z.id+'\')" style="border-left-color:'+(UI.zone===z.id?"#E87000":(pop.health!=="saudavel"?STATE_COLOR[pop.health]:"transparent"))+'">'+z.label+'<span class="zone-n">'+pop.subsDownstream+'</span></div>';
+  });
+  el.innerHTML=html;
+  document.getElementById("detail-macro-btn").classList.toggle("active", UI.detailLevel==="macro");
+  document.getElementById("detail-full-btn").classList.toggle("active", UI.detailLevel==="full");
+}
+
+function renderMetrics(){
+  var el=document.getElementById("metrics");
+  var allIds = Object.keys(NODES);
+  var byHealth={saudavel:0,degradado:0,critico:0,falha:0};
+  allIds.forEach(function(id){ byHealth[NODES[id].health]++; });
+  var spofCount = allIds.filter(function(id){ return isSPOF(id) && NODES[id].type!=="cto"; }).length;
+  var totalSubs = NODES["core-1"].subsDownstream + NODES["core-2"].subsDownstream; /* aproximação: soma via core (duplo-conta dual-homed, ok p/ métrica de painel) */
+  var cards = [
+    ["Elementos de rede", allIds.length, "POP→OLT→PON→CTO"],
+    ["Alertas ativos", ALERTS.length, "priorizados por score combinado"],
+    ["Nós críticos/falha", byHealth.critico+byHealth.falha, byHealth.falha+" em falha"],
+    ["Pontos únicos de falha (SPOF)", spofCount, "sem redundância no caminho"],
+    ["Assinantes na base sintética", fmtN(totalSubsUnique()), "agregados por CTO"]
+  ];
+  el.innerHTML = cards.map(function(c){
+    return '<div class="mc"><div class="mc-lbl">'+c[0]+'</div><div class="mc-val">'+c[1]+'</div><div class="mc-sub">'+c[2]+'</div></div>';
+  }).join("");
+}
+function totalSubsUnique(){
+  var s=0; Object.keys(NODES).forEach(function(id){ if(NODES[id].type==="cto") s+=NODES[id].subscribers; });
+  return s;
+}
+function fmtN(n){return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"k":""+n;}
+
+/* ════════════════════════════════════════════════════════════════════════
+   DÍGRAFO DE TOPOLOGIA (D3 força-dirigida) — mesmo padrão do JourneyGraph:
+   arrastar para fixar, clique para detalhe, zoom/pan, cor por saúde.
+   ════════════════════════════════════════════════════════════════════════ */
+var sim=null;
+function visibleNodeIds(){
+  var maxType = UI.detailLevel==="full" ? "cto" : "olt";
+  var order=["core","pop","olt","pon","cto"];
+  var maxIdx=order.indexOf(maxType);
+  return Object.keys(NODES).filter(function(id){
+    var n=NODES[id];
+    if(order.indexOf(n.type)>maxIdx) return false;
+    if(UI.zone!=="all" && n.type!=="core" && n.zone!==UI.zone) return false;
+    if(UI.healthFilter==="problema" && n.health==="saudavel" && !isSPOF(id)) return false;
+    return true;
+  });
+}
+function renderGraph(){
+  var ids = visibleNodeIds();
+  var nodes = ids.map(function(id){ return Object.assign({}, NODES[id]); });
+  var nmap={}; nodes.forEach(function(n){ nmap[n.id]=n; });
+  var linkData = EDGES.filter(function(e){ return nmap[e.source] && nmap[e.target]; })
+    .map(function(e){ return {source:nmap[e.source], target:nmap[e.target], redundant:e.redundant, type:e.type}; });
+
+  var svgEl=d3.select("#graph-svg");
+  svgEl.selectAll("*").remove();
+  var el=document.getElementById("screen-topology");
+  var W=el.clientWidth||700, H=el.clientHeight||480;
+
+  var rScale=d3.scaleSqrt().domain([1, d3.max(nodes,function(n){return n.subsDownstream||1;})||1]).range([7,42]);
+  nodes.forEach(function(n){ n.r = n.type==="core" ? 26 : Math.max(8, rScale(n.subsDownstream||1)); });
+
+  var zoomG=svgEl.append("g").attr("class","zoom-layer");
+  var zoomBeh=d3.zoom().scaleExtent([0.25,5]).on("zoom",function(ev){ zoomG.attr("transform",ev.transform); });
+  svgEl.call(zoomBeh);
+
+  if(sim) sim.stop();
+  sim=d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(linkData).distance(70).strength(0.35))
+    .force("charge", d3.forceManyBody().strength(-260))
+    .force("center", d3.forceCenter(W/2,H/2))
+    .force("collide", d3.forceCollide().radius(function(d){return d.r+10;}))
+    .alpha(0.8).alphaDecay(0.03);
+
+  var link = zoomG.append("g").selectAll("line").data(linkData).enter().append("line")
+    .attr("stroke", function(d){ return d.redundant ? "#2A6F4A" : "#2A4A6F"; })
+    .attr("stroke-width", function(d){ return d.redundant?2.4:1.4; })
+    .attr("stroke-dasharray", function(d){ return d.redundant ? "0" : "0"; });
+
+  var node = zoomG.append("g").selectAll("g.node").data(nodes).enter().append("g").attr("class","node")
+    .style("cursor","pointer")
+    .call(d3.drag()
+      .on("start", function(ev,d){ if(!ev.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; d._moved=false; d._dx=ev.x; d._dy=ev.y; })
+      .on("drag", function(ev,d){ d.fx=ev.x; d.fy=ev.y; if(Math.abs(ev.x-d._dx)>6||Math.abs(ev.y-d._dy)>6) d._moved=true; })
+      .on("end", function(ev,d){ if(!ev.active) sim.alphaTarget(0); if(!d._moved){ /* mantém fixo — clique simples também fixa a posição, como no JourneyGraph */ } }))
+    .on("click", function(ev,d){ selectNode(d.id); })
+    .on("mouseenter", function(ev,d){ showTooltip(ev,d); })
+    .on("mousemove", function(ev,d){ moveTooltip(ev); })
+    .on("mouseleave", hideTooltip);
+
+  node.append("circle")
+    .attr("r", function(d){return d.r;})
+    .attr("fill", function(d){ return d.type==="core" ? "#12324A" : STATE_COLOR[d.health]; })
+    .attr("stroke", function(d){ return isSPOF(d.id) ? "#FF4444" : (d.type==="core"?"#8ABEDF":"#0A1422"); })
+    .attr("stroke-width", function(d){ return isSPOF(d.id)?2.6:1.4; })
+    .attr("stroke-dasharray", function(d){ return isSPOF(d.id) ? "3 2" : "0"; });
+
+  node.append("text").text(function(d){ return d.type==="core"?"CORE":d.type.toUpperCase(); })
+    .attr("text-anchor","middle").attr("dy",4)
+    .attr("font-size", function(d){ return d.r>16?9:7; })
+    .attr("fill","#F0F8FF").attr("font-family","Arial").attr("font-weight",700)
+    .attr("pointer-events","none");
+
+  sim.on("tick", function(){
+    link.attr("x1",function(d){return d.source.x;}).attr("y1",function(d){return d.source.y;})
+        .attr("x2",function(d){return d.target.x;}).attr("y2",function(d){return d.target.y;});
+    node.attr("transform", function(d){ return "translate("+d.x+","+d.y+")"; });
+  });
+
+  if(UI.selectedNode) renderNodeDetail(UI.selectedNode);
+}
+function showTooltip(ev,d){
+  var tt=document.getElementById("tooltip");
+  tt.style.display="block";
+  tt.innerHTML="<b>"+d.label+"</b><br>Estado: "+STATE_LABEL[d.health]+"<br>Assinantes downstream: "+d.subsDownstream+
+    (isSPOF(d.id)?"<br><span style='color:#FF4444'>SPOF — sem redundância</span>":"");
+  moveTooltip(ev);
+}
+function moveTooltip(ev){
+  var tt=document.getElementById("tooltip");
+  var rect=document.getElementById("screen-topology").getBoundingClientRect();
+  tt.style.left=(ev.clientX-rect.left+14)+"px";
+  tt.style.top=(ev.clientY-rect.top+10)+"px";
+}
+function hideTooltip(){ document.getElementById("tooltip").style.display="none"; }
+
+function selectNode(id){
+  UI.selectedNode=id;
+  renderNodeDetail(id);
+  if(window.innerWidth<=900){ _toggleSidebar("detail-sidebar"); }
+}
+
+/* ── Painel de detalhe do nó (sidebar direita): atributos + Markov +
+   outlier + capacidade + causa provável (Bayes) — tudo calculado ao vivo
+   para o nó clicado, como pede o §7.1. ── */
+function renderNodeDetail(id){
+  var el=document.getElementById("node-detail");
+  var n=NODES[id];
+  if(!n){ el.innerHTML='<div style="font-size:11.5px;color:#3A6080;">Nó não encontrado.</div>'; return; }
+  var mk=markovPredict(n,4);
+  var out=nodeOutlierFlags(n);
+  var by=bayesCauses(n);
+  var br=blastRadius(id);
+  var risk=riskIndex(n);
+  var spof=isSPOF(id);
+  var cent=centralityScore(id);
+
+  var html='';
+  html+='<div class="nd-card">';
+  html+='<div style="font-size:13px;font-weight:700;color:#F0F8FF;">'+n.label+
+    (spof?'<span class="spof-badge">SPOF</span>':'')+(n.hasCorporate?'<span class="corp-badge">SLA</span>':'')+'</div>';
+  html+='<div style="font-size:10.5px;color:#567898;font-family:monospace;margin-bottom:6px;">'+n.id+'</div>';
+  html+='<div class="nd-row"><span class="k">Estado</span><span class="v" style="color:'+STATE_COLOR[n.health]+'">'+STATE_LABEL[n.health]+'</span></div>';
+  html+='<div class="nd-row"><span class="k">Zona</span><span class="v">'+(ZONES.find(function(z){return z.id===n.zone;})||{label:"—"}).label+'</span></div>';
+  if(n.capacityMbps) html+='<div class="nd-row"><span class="k">Capacidade nominal</span><span class="v">'+fmtN(n.capacityMbps)+' Mbps</span></div>';
+  if(n.capacityPorts) html+='<div class="nd-row"><span class="k">Portas</span><span class="v">'+(n.portsUsed||0)+' / '+n.capacityPorts+' ('+(n.portOccupancyPct||0)+'%)</span></div>';
+  html+='<div class="nd-row"><span class="k">Utilização atual</span><span class="v">'+Math.round(n.util)+'%</span></div>';
+  html+='<div class="nd-row"><span class="k">Latência</span><span class="v">'+Math.round(n.lat)+' ms</span></div>';
+  html+='<div class="nd-row"><span class="k">Perda de pacotes</span><span class="v">'+n.loss.toFixed(2)+'%</span></div>';
+  html+='<div class="nd-row"><span class="k">Uptime</span><span class="v">'+n.uptimePct.toFixed(2)+'%</span></div>';
+  html+='<div class="nd-row"><span class="k">Assinantes downstream</span><span class="v">'+n.subsDownstream+'</span></div>';
+  html+='<div class="nd-row"><span class="k">Cenário sintético</span><span class="v" style="text-transform:capitalize;">'+n.scenario.replace(/_/g," ")+'</span></div>';
+  html+='</div>';
+
+  html+='<div class="nd-card">';
+  html+='<div class="ds-title" style="margin:0 0 6px;">Índice de risco combinado</div>';
+  html+='<div style="font-size:26px;font-weight:800;color:'+(risk>=65?"#FF4444":risk>=35?"#E87000":"#2ECC71")+';">'+risk+'</div>';
+  html+='<div style="font-size:10.5px;color:#567898;">Markov (35%) + outlier ML (30%) + centralidade (20%) + SPOF (15%)</div>';
+  html+='<div style="font-size:10.5px;color:#8ABEDF;margin-top:4px;">Centralidade (proxy de betweenness em árvore): '+cent+'/100</div>';
+  html+='</div>';
+
+  html+='<div class="nd-card">';
+  html+='<div class="ds-title" style="margin:0 0 6px;">Markov — probabilidade de piora</div>';
+  html+='<div style="font-size:12px;color:#D0E8FF;">P(estado pior em '+mk.hoursAhead+'h | '+STATE_LABEL[n.health]+' agora) = <b style="color:#E87000;">'+Math.round(mk.pWorse*100)+'%</b></div>';
+  html+='<div style="display:flex;margin-top:6px;">';
+  STATE_ORDER.forEach(function(s,i){
+    html+='<div class="mk-cell" style="color:'+STATE_COLOR[s]+';">'+Math.round(mk.dist[i]*100)+'%<br><span style="color:#567898;font-size:8px;">'+STATE_LABEL[s].slice(0,4)+'</span></div>';
+  });
+  html+='</div>';
+  html+='<div style="font-size:9.5px;color:#3A6080;margin-top:6px;">Matriz de transição estimada por contagem de transições hora-a-hora observadas em todos os nós da classe "'+n.type+'" (suavização de Laplace).</div>';
+  html+='</div>';
+
+  html+='<div class="nd-card">';
+  html+='<div class="ds-title" style="margin:0 0 6px;">Outlier (z-score robusto / MAD)</div>';
+  [["Utilização",out.util],["Latência",out.lat],["Perda",out.loss]].forEach(function(pair){
+    var flag=pair[1].isOutlierNow;
+    html+='<div class="nd-row"><span class="k">'+pair[0]+'</span><span class="v" style="color:'+(flag?"#FF4444":"#8ABEDF")+';">z='+pair[1].lastZ.toFixed(1)+(flag?" (outlier)":"")+'</span></div>';
+  });
+  html+='</div>';
+
+  if(n.type==="core"||n.type==="pop"||n.type==="olt"){
+    var cap=capacityProjection(n,90);
+    html+='<div class="nd-card">';
+    html+='<div class="ds-title" style="margin:0 0 6px;">Projeção de capacidade (regressão linear)</div>';
+    if(cap.hasProjection){
+      html+='<div style="font-size:12px;color:#D0E8FF;">Satura (≥90%) em torno de <b style="color:#E87000;">'+fmtDate(cap.etaDate)+'</b></div>';
+      html+='<div style="font-size:10.5px;color:#8ABEDF;margin-top:4px;">IC 95%: '+fmtDate(cap.ciLowDate)+' — '+fmtDate(cap.ciHighDate)+'</div>';
+      html+='<div style="font-size:9.5px;color:#3A6080;margin-top:4px;">slope='+cap.reg.b.toFixed(3)+' pp/h · R²='+cap.reg.r2.toFixed(2)+'</div>';
+    } else {
+      html+='<div style="font-size:11.5px;color:#567898;">'+(cap.reason||"Sem projeção de saturação relevante.")+'</div>';
+    }
+    html+='</div>';
+  }
+
+  html+='<div class="nd-card">';
+  html+='<div class="ds-title" style="margin:0 0 6px;">Causa provável (rede Bayesiana)</div>';
+  by.posterior.slice(0,4).forEach(function(p){
+    html+='<div style="margin-bottom:5px;"><div style="display:flex;justify-content:space-between;font-size:11px;color:#8ABEDF;"><span>'+p.label+'</span><span>'+Math.round(p.prob*100)+'%</span></div>'
+      +'<div class="nd-bar-wrap"><div class="nd-bar-fill" style="width:'+Math.round(p.prob*100)+'%;background:#E87000;"></div></div></div>';
+  });
+  html+='</div>';
+
+  html+='<div class="nd-card">';
+  html+='<div class="ds-title" style="margin:0 0 6px;">Blast radius</div>';
+  html+='<div class="nd-row"><span class="k">Nós afetados</span><span class="v">'+br.nodeIds.length+'</span></div>';
+  html+='<div class="nd-row"><span class="k">Assinantes afetados</span><span class="v">'+br.subsAffected+'</span></div>';
+  html+='<div class="nd-row"><span class="k">Zonas</span><span class="v">'+(br.zones.length?br.zones.length:"—")+'</span></div>';
+  html+='<div class="nd-row"><span class="k">Cliente corporativo/SLA</span><span class="v">'+(br.hasCorporate?"Sim":"Não")+'</span></div>';
+  html+='</div>';
+
+  var relatedAlert = ALERTS.find(function(a){ return a.nodeId===id; });
+  if(relatedAlert){
+    html+='<button onclick="document.querySelector(\'.nav-btn[data-screen=alerts]\').click();setTimeout(function(){_alertToggleOpen(\''+relatedAlert.id+'\');},60);" style="width:100%;background:#0E1F2E;border:1px solid #E87000;color:#E87000;font-weight:700;padding:8px;border-radius:6px;cursor:pointer;font-size:12px;margin-top:4px;">&#9888; Ver alerta deste nó</button>';
+  }
+
+  el.innerHTML=html;
+}
+function fmtDate(d){
+  if(!d) return "—";
+  return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"});
+}
+window.addEventListener("resize", function(){
+  if(UI.screen==="topology") renderGraph();
+  else if(UI.screen==="restricted" && S_restricted.current) rstDrawDigraph(S_restricted.current);
+});
+
+/* ════════════════════════════════════════════════════════════════════════
+   TELA DE ALERTAS (§7.2) — lista priorizada por score combinado (§5.5),
+   cada alerta com as 7 seções de explicabilidade obrigatória (§5.6).
+   ════════════════════════════════════════════════════════════════════════ */
+function _alertStatusOf(id){ return ALERT_STATE.status[id]||"novo"; }
+function _alertSetStatus(id,st){ ALERT_STATE.status[id]=st; renderAlerts(); }
+function _alertToggleOpen(id){ ALERT_STATE.open=(ALERT_STATE.open===id?null:id); renderAlerts(); }
+function _alertSetFilter(key,val){ ALERT_STATE[key]=val; renderAlerts(); }
+
+function _scoreColor(v){ return v>=70?"#FF4444":v>=45?"#E87000":v>=20?"#E8B800":"#2ECC71"; }
+
+function renderAlerts(){
+  var el=document.getElementById("alerts-content");
+  if(!el) return;
+  var classes=Array.from(new Set(ALERTS.map(function(a){return a.classe;}))).sort();
+  var camadas=Array.from(new Set(ALERTS.map(function(a){return a.camada;}))).sort();
+  var filtrados=ALERTS.filter(function(a){
+    if(ALERT_STATE.classe!=="todas" && a.classe!==ALERT_STATE.classe) return false;
+    if(ALERT_STATE.camada!=="todas" && a.camada!==ALERT_STATE.camada) return false;
+    return true;
+  });
+  var nOcultos=filtrados.filter(function(a){return _alertStatusOf(a.id)==="resolvido";}).length;
+  var visiveis=ALERT_STATE.ocultarResolvidos?filtrados.filter(function(a){return _alertStatusOf(a.id)!=="resolvido";}):filtrados;
+
+  var html='<div style="font-size:11px;color:#567898;margin-bottom:10px;max-width:900px;">&#9888; Painel de Alertas — priorizado por score combinado de gravidade técnica × impacto de negócio (§5.5 do prompt de desenvolvimento). Cada alerta é explicável nas 7 dimensões abaixo: o quê, por quê (Bayes), tendência (Markov), quem é afetado (blast radius), por que essa prioridade, o que fazer, e narrativa em linguagem natural.</div>';
+
+  var counts={saudavel:0,degradado:0,critico:0,falha:0};
+  ALERTS.forEach(function(a){counts[a.severidade]++;});
+  html+='<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">';
+  [["falha","Falha"],["critico","Crítico"],["degradado","Degradado"]].forEach(function(pair){
+    var k=pair[0], lbl=pair[1], c=STATE_COLOR[k];
+    html+='<div style="flex:1;min-width:110px;background:#0C1829;border:1px solid #1A3050;border-left:3px solid '+c+';border-radius:8px;padding:10px 14px;">'
+      +'<div style="font-size:10px;color:#567898;text-transform:uppercase;">'+lbl+'</div>'
+      +'<div style="font-size:22px;font-weight:700;color:'+c+';">'+(counts[k]||0)+'</div></div>';
+  });
+  html+='</div>';
+
+  html+='<div style="background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:12px;margin-bottom:12px;">';
+  html+='<div style="font-size:10px;color:#567898;text-transform:uppercase;margin-bottom:8px;">Filtros</div>';
+  html+='<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;">';
+  html+='<label style="font-size:11px;color:#8ABEDF;">Classe do elemento<br><select onchange="_alertSetFilter(\'classe\',this.value)" style="margin-top:3px;background:#07101C;border:1px solid #2A4A6F;color:#D0E8FF;font-size:11px;padding:4px 6px;border-radius:4px;min-width:150px;">'
+    +'<option value="todas"'+(ALERT_STATE.classe==="todas"?" selected":"")+'>Todas</option>'
+    +classes.map(function(c){return '<option value="'+c+'"'+(ALERT_STATE.classe===c?" selected":"")+'>'+c+'</option>';}).join("")
+    +'</select></label>';
+  html+='<label style="font-size:11px;color:#8ABEDF;">Camada FCAPS<br><select onchange="_alertSetFilter(\'camada\',this.value)" style="margin-top:3px;background:#07101C;border:1px solid #2A4A6F;color:#D0E8FF;font-size:11px;padding:4px 6px;border-radius:4px;min-width:170px;">'
+    +'<option value="todas"'+(ALERT_STATE.camada==="todas"?" selected":"")+'>Todas</option>'
+    +camadas.map(function(c){return '<option value="'+c+'"'+(ALERT_STATE.camada===c?" selected":"")+'>'+c+'</option>';}).join("")
+    +'</select></label>';
+  html+='<label style="font-size:11px;color:#8ABEDF;display:flex;align-items:center;gap:6px;"><input type="checkbox" '+(ALERT_STATE.ocultarResolvidos?"checked":"")+' onchange="ALERT_STATE.ocultarResolvidos=this.checked;renderAlerts();"> Ocultar resolvidos</label>';
+  html+='</div>';
+  if(ALERT_STATE.ocultarResolvidos && nOcultos>0){
+    html+='<div style="margin-top:8px;font-size:11px;color:#3A6080;">'+nOcultos+' alerta(s) resolvido(s) oculto(s) — <a href="#" onclick="ALERT_STATE.ocultarResolvidos=false;renderAlerts();return false;" style="color:#E87000;">reexibir</a></div>';
+  }
+  html+='</div>';
+
+  if(!visiveis.length){
+    html+='<div style="text-align:center;padding:24px;color:#3A6080;font-size:12px;background:#0C1829;border:1px solid #1A3050;border-radius:8px;">Nenhum alerta no filtro atual.</div>';
+  }
+
+  visiveis.forEach(function(a){
+    var isOpen=ALERT_STATE.open===a.id, c=_scoreColor(a.score), st=_alertStatusOf(a.id);
+    var stLbl=(ALERT_STATUS_OPTS.filter(function(s){return s.id===st;})[0]||{}).label||st;
+    var isChild = !!a.parentAlertId;
+    html+='<div class="al-card" style="'+(isChild?"margin-left:22px;border-left:2px solid #2A4A6F;":"")+'">';
+    html+='<div class="al-head" onclick="_alertToggleOpen(\''+a.id+'\')">';
+    html+='<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
+      +(isChild?'<span style="color:#567898;font-size:11px;flex-shrink:0;">&#8618; correlacionado</span>':'')
+      +'<span style="font-size:9px;text-transform:uppercase;color:#567898;background:#07101C;border:1px solid #1A3050;border-radius:10px;padding:2px 8px;flex-shrink:0;">'+a.classe+'</span>'
+      +'<div style="min-width:0;"><div style="font-size:13px;color:#F0F8FF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+a.objeto+'</div>'
+      +'<div style="font-size:10px;color:#567898;font-family:monospace;">'+a.id+' &middot; causa provável: '+a.bayes.top.label+' ('+Math.round(a.bayes.top.prob*100)+'%)</div></div></div>';
+    html+='<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">'
+      +'<span style="font-size:10px;color:#8ABEDF;background:#07101C;border:1px solid #2A4A6F;border-radius:10px;padding:2px 8px;">'+stLbl+'</span>'
+      +'<span style="font-size:12px;font-weight:800;color:'+c+';background:'+c+'1A;border:1px solid '+c+'55;border-radius:10px;padding:2px 10px;" title="Score combinado (gravidade × impacto)">'+a.score+'</span>'
+      +'<span style="color:#567898;display:inline-block;transition:transform .15s;transform:'+(isOpen?"rotate(90deg)":"none")+';">&#10148;</span></div>';
+    html+='</div>';
+    if(isOpen){
+      html+='<div class="al-body">';
+
+      html+='<div class="al-sec-title">1. O quê</div>';
+      html+='<div style="font-size:12.5px;color:#D0E8FF;">'+a.node.label+' ('+a.classe+', zona '+((ZONES.find(function(z){return z.id===a.node.zone;})||{}).label||"backbone")+') está em estado <b style="color:'+STATE_COLOR[a.severidade]+';">'+STATE_LABEL[a.severidade]+'</b>. '+a.indicador+': utilização '+Math.round(a.node.util)+'%, latência '+Math.round(a.node.lat)+' ms, perda '+a.node.loss.toFixed(2)+'%'+(a.outlierScore>=42?" — padrão estatisticamente atípico (outlier robusto, não apenas limiar fixo)":"")+'.</div>';
+
+      html+='<div class="al-sec-title">2. Por quê (causa provável — rede Bayesiana)</div>';
+      a.bayes.posterior.slice(0,4).forEach(function(p){
+        html+='<div style="margin-bottom:4px;"><div style="display:flex;justify-content:space-between;font-size:11px;color:#8ABEDF;"><span>'+p.label+'</span><span>'+Math.round(p.prob*100)+'%</span></div>'
+          +'<div class="score-bar-wrap"><div class="score-bar-fill" style="width:'+Math.round(p.prob*100)+'%;background:#E87000;"></div></div></div>';
+      });
+      html+='<div style="font-size:10.5px;color:#567898;margin-top:4px;">Evidências a favor: '+Object.keys(a.bayes.evidence).filter(function(k){return a.bayes.evidence[k];}).join(", ")+'. Evidências descartadas: '+Object.keys(a.bayes.evidence).filter(function(k){return !a.bayes.evidence[k];}).join(", ")+'.</div>';
+
+      html+='<div class="al-sec-title">3. Para onde (tendência — Markov)</div>';
+      html+='<div style="font-size:12.5px;color:#D0E8FF;">P(estado pior em '+a.markov.hoursAhead+'h) = <b style="color:#E87000;">'+Math.round(a.markov.pWorse*100)+'%</b>, estimada pela matriz de transição da classe "'+a.node.type+'".</div>';
+
+      html+='<div class="al-sec-title">4. Quem é afetado (blast radius)</div>';
+      html+='<div style="font-size:12.5px;color:#D0E8FF;">'+a.blast.subsAffected+' assinante(s) downstream, em '+(a.blast.zones.length||1)+' zona(s)'+(a.blast.hasCorporate?", incluindo cliente(s) corporativo(s) com SLA diferenciado":"")+'.'+(a.spof?' Este elemento é <b style="color:#FF4444;">ponto único de falha (SPOF)</b> — sem caminho redundante.':'')+'</div>';
+
+      html+='<div class="al-sec-title">5. Por que essa prioridade</div>';
+      html+='<div style="display:flex;gap:16px;flex-wrap:wrap;">';
+      html+='<div style="flex:1;min-width:140px;"><div style="font-size:11px;color:#8ABEDF;display:flex;justify-content:space-between;"><span>Gravidade técnica</span><span>'+a.gravidade+'/100</span></div><div class="score-bar-wrap"><div class="score-bar-fill" style="width:'+a.gravidade+'%;background:#E84040;"></div></div><div style="font-size:9.5px;color:#3A6080;margin-top:2px;">estado(40%) + Markov(25%) + outlier(20%) + SPOF(15%)</div></div>';
+      html+='<div style="flex:1;min-width:140px;"><div style="font-size:11px;color:#8ABEDF;display:flex;justify-content:space-between;"><span>Impacto de negócio</span><span>'+a.impacto+'/100</span></div><div class="score-bar-wrap"><div class="score-bar-fill" style="width:'+a.impacto+'%;background:#60C0FF;"></div></div><div style="font-size:9.5px;color:#3A6080;margin-top:2px;">assinantes(40%) + corporativo(20%) + CRM(20%) + Ouvidoria/Anatel(20%)</div></div>';
+      html+='</div>';
+      html+='<div style="margin-top:6px;font-size:11px;color:#8ABEDF;">Score combinado = 0,5×gravidade + 0,5×impacto = <b style="color:'+c+';">'+a.score+'</b>. CRM: '+a.crm.total+' reclamação(ões) na zona nos últimos 7 dias. Risco de escalonamento à Ouvidoria/Anatel: <b>'+a.ouvidoria.level+'</b>.</div>';
+
+      html+='<div class="al-sec-title">6. O que fazer</div>';
+      html+='<div style="font-size:12.5px;color:#D0E8FF;">'+recommendedAction(a)+'</div>';
+
+      html+='<div class="al-sec-title">7. Narrativa (Assistente)</div>';
+      html+='<div style="background:#07101C;border-radius:6px;padding:10px 12px;font-size:12.5px;color:#8ABEDF;line-height:1.7;">'+alertNarrative(a)+'</div>';
+
+      html+='<div style="margin-top:12px;"><div class="al-sec-title" style="margin-top:0;">Status de tratamento</div><div style="display:flex;gap:6px;flex-wrap:wrap;">';
+      ALERT_STATUS_OPTS.forEach(function(s){
+        var active=st===s.id;
+        html+='<button onclick="_alertSetStatus(\''+a.id+'\',\''+s.id+'\')" style="font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer;background:'+(active?c+"1A":"transparent")+';border:1px solid '+(active?c+"66":"#1A3050")+';color:'+(active?c:"#8ABEDF")+';">'+s.label+'</button>';
+      });
+      html+='</div></div>';
+      html+='<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">';
+      html+='<button onclick="explainAlert(\''+a.id+'\')" style="background:#0E1F2E;border:1px solid #E87000;color:#E87000;font-weight:700;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:12px;">&#129302; Perguntar ao Assistente</button>';
+      html+='</div>';
+
+      html+='</div>';
+    }
+    html+='</div>';
+  });
+
+  el.innerHTML=html;
+}
+
+function recommendedAction(a){
+  var byId=a.bayes.top.id;
+  var acts = {
+    rompimento_fibra:"Acionar equipe de campo para inspeção do trecho de fibra (drop/distribuição) — Nível 1 semi-automático: abrir OS de reparo com prioridade proporcional ao número de assinantes afetados.",
+    falha_energia:"Verificar UPS/gerador do POP e acionar equipe de energia — priorizar por presença de cliente corporativo com SLA diferenciado.",
+    sobrecarga_olt:"Avaliar upgrade/expansão de capacidade da OLT (ver projeção na aba Capacidade) e, no curto prazo, balanceamento de carga entre PONs.",
+    falha_equipamento:"Acionar NOC para diagnóstico remoto e, se necessário, substituição de placa/equipamento ativo — abrir chamado com fornecedor se dentro de garantia.",
+    anomalia_trafego:"Investigar padrão de tráfego (possível anomalia de segurança) — aplicar rate-limit temporário e escalar ao time de segurança de rede se o padrão persistir.",
+    degradacao_upstream:"Contatar o provedor de trânsito IP para verificação de rota/congestionamento — considerar failover para o link upstream redundante, se disponível."
+  };
+  return (acts[byId]||"Encaminhar ao NOC para triagem.") + " (Nível 1 semi-automático — mesmo padrão de encaminhamento do JourneyGraph.)";
+}
+function alertNarrative(a){
+  var rqualNote = (a.severidade==="critico"||a.severidade==="falha") ? " Este padrão de degradação prolongada, se não resolvido dentro do prazo de reparo aplicável, pode se enquadrar nos indicadores de disponibilidade/tempo de reparo do RQUAL (Resolução Anatel — paráfrase para fins de demonstração, ver Assistente)." : "";
+  return "O elemento "+a.node.label+" está classificado como "+STATE_LABEL[a.severidade]+", com "+Math.round(a.bayes.top.prob*100)+"% de probabilidade posterior para a causa \""+a.bayes.top.label+"\" (rede Bayesiana) e "+Math.round(a.markov.pWorse*100)+"% de chance de piorar nas próximas "+a.markov.hoursAhead+"h (Markov). Afeta "+a.blast.subsAffected+" assinante(s)"+(a.blast.hasCorporate?", incluindo corporativo(s) com SLA":"")+". Score de prioridade "+a.score+"/100."+rqualNote;
+}
+function explainAlertAnswer(alertId){
+  var a = ALERTS.find(function(x){ return x.id===alertId; });
+  if(!a) return null;
+  return {
+    resposta: "<b>"+a.node.label+"</b> — "+STATE_LABEL[a.severidade]+" (score "+a.score+"/100)<br><br>"
+      +"<b>1. O quê:</b> "+a.indicador+", util. "+Math.round(a.node.util)+"%, latência "+Math.round(a.node.lat)+"ms, perda "+a.node.loss.toFixed(2)+"%.<br>"
+      +"<b>2. Por quê:</b> causa mais provável "+a.bayes.top.label+" ("+Math.round(a.bayes.top.prob*100)+"% de confiança, rede Bayesiana).<br>"
+      +"<b>3. Tendência:</b> "+Math.round(a.markov.pWorse*100)+"% de chance de piorar em "+a.markov.hoursAhead+"h (Markov).<br>"
+      +"<b>4. Afetados:</b> "+a.blast.subsAffected+" assinante(s)"+(a.blast.hasCorporate?" (com corporativo/SLA)":"")+"."+(a.spof?" Ponto único de falha (SPOF).":"")+"<br>"
+      +"<b>5. Prioridade:</b> gravidade "+a.gravidade+"/100 × impacto "+a.impacto+"/100.<br>"
+      +"<b>6. Ação:</b> "+recommendedAction(a)+"<br>"
+      +"<b>7. Narrativa:</b> "+alertNarrative(a),
+    topico:"ALERTA", citacoes:[{titulo:"Alerta "+a.id, secao:"Explicabilidade §5.6", corpus:"alertas", fonte:"NetGraph — motor analítico"}]
+  };
+}
+function explainAlert(alertId){
+  var a = ALERTS.find(function(x){ return x.id===alertId; });
+  if(!a) return;
+  var pergunta="Por que "+a.node.label+" está em estado "+STATE_LABEL[a.severidade]+"?";
+  _assistHistory.push({role:"user", texto:pergunta});
+  var r=explainAlertAnswer(alertId);
+  _assistHistory.push({role:"assistant", texto:r.resposta, citacoes:r.citacoes});
+  renderAssistant();
+  renderAlertsAssistant();
+  var box=document.getElementById("alerts-assist-box");
+  if(box) box.scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   TELA DE CAPACIDADE (§7.3) — projeções de saturação por POP/OLT (§5.4),
+   com data estimada e intervalo de confiança de 95%.
+   ════════════════════════════════════════════════════════════════════════ */
+function renderCapacity(){
+  var el=document.getElementById("capacity-content");
+  if(!el) return;
+
+  var targets = Object.values(NODES).filter(function(n){ return n.type==="pop"||n.type==="olt"; });
+  var projections = targets.map(function(n){ return {node:n, cap:capacityProjection(n,90)}; });
+  projections.sort(function(a,b){
+    var ha=a.cap.hasProjection, hb=b.cap.hasProjection;
+    if(ha&&hb) return a.cap.hoursFromNow-b.cap.hoursFromNow;
+    if(ha&&!hb) return -1;
+    if(!ha&&hb) return 1;
+    return b.node.util-a.node.util;
+  });
+  var within90d = projections.filter(function(p){ return p.cap.hasProjection && p.cap.hoursFromNow<=24*90; });
+
+  var html='<div style="font-size:11px;color:#567898;margin-bottom:14px;max-width:900px;">&#128202; Projeção de saturação por regressão linear real (mínimos quadrados) sobre a série sintética de utilização das últimas '+N_HOURS+'h de cada POP/OLT — data estimada de cruzamento do limiar de 90% de utilização, com intervalo de confiança de 95% sobre o coeficiente angular da regressão. Insumo direto para planejamento de expansão de rede.</div>';
+
+  html+='<div class="cap-grid">';
+  html+='<div class="cap-card"><div class="cap-title">Elementos com saturação projetada em até 90 dias</div><div style="font-size:34px;font-weight:800;color:'+(within90d.length?"#E87000":"#2ECC71")+';">'+within90d.length+'</div><div style="font-size:11px;color:#567898;">de '+targets.length+' POPs/OLTs monitorados</div></div>';
+  var avgUtil = Math.round(targets.reduce(function(s,n){return s+n.util;},0)/targets.length);
+  html+='<div class="cap-card"><div class="cap-title">Utilização média da rede de agregação</div><div style="font-size:34px;font-weight:800;color:#F0F8FF;">'+avgUtil+'%</div><div style="font-size:11px;color:#567898;">média simples entre POPs e OLTs</div></div>';
+  html+='</div>';
+
+  html+='<div class="cap-card full" style="margin-top:12px;">';
+  html+='<div class="cap-title">Timeline de saturação (ordenado por urgência)</div>';
+  projections.forEach(function(p){
+    var n=p.node, cap=p.cap;
+    var barColor = n.util>=90?"#FF4444":n.util>=75?"#E87000":n.util>=55?"#E8B800":"#2ECC71";
+    html+='<div class="cap-row">';
+    html+='<div class="cap-lbl" title="'+n.label+'">'+n.label+'</div>';
+    html+='<div class="cap-bar-wrap"><div class="cap-bar-fill" style="width:'+Math.min(100,Math.round(n.util))+'%;background:'+barColor+';"></div></div>';
+    html+='<div style="width:44px;text-align:right;font-size:11px;color:'+barColor+';flex-shrink:0;">'+Math.round(n.util)+'%</div>';
+    var etaTxt = cap.hasProjection
+      ? ("satura ~"+fmtDate(cap.etaDate)+" (IC: "+fmtDate(cap.ciLowDate)+" – "+fmtDate(cap.ciHighDate)+")")
+      : (cap.alreadyAbove ? "já acima do limiar" : "sem tendência de saturação");
+    html+='<div class="cap-eta" style="color:'+(cap.hasProjection?"#E87000":"#567898")+';">'+etaTxt+'</div>';
+    html+='</div>';
+  });
+  html+='</div>';
+
+  html+='<div class="cap-card full" style="margin-top:12px;">';
+  html+='<div class="cap-title">Detalhamento por elemento</div>';
+  html+='<div style="overflow-x:auto;"><table class="cap-table"><thead><tr><th>Elemento</th><th>Zona</th><th>Util. atual</th><th>Tendência (pp/h)</th><th>R²</th><th>Data estimada de saturação</th><th>IC 95%</th></tr></thead><tbody>';
+  projections.forEach(function(p){
+    var n=p.node, cap=p.cap;
+    html+='<tr><td>'+n.label+'</td><td>'+((ZONES.find(function(z){return z.id===n.zone;})||{}).label||"—")+'</td><td>'+Math.round(n.util)+'%</td>'
+      +'<td>'+cap.reg.b.toFixed(3)+'</td><td>'+cap.reg.r2.toFixed(2)+'</td>'
+      +'<td>'+(cap.hasProjection?fmtDate(cap.etaDate):(cap.alreadyAbove?"já acima":"—"))+'</td>'
+      +'<td>'+(cap.hasProjection?(fmtDate(cap.ciLowDate)+" – "+fmtDate(cap.ciHighDate)):"—")+'</td></tr>';
+  });
+  html+='</tbody></table></div>';
+  html+='<div style="font-size:9.5px;color:#3A6080;margin-top:8px;">Metodologia: regressão linear (mínimos quadrados) de utilização(%) em função do tempo (h), sobre '+N_HOURS+' pontos horários sintéticos. Ponto de cruzamento do limiar de 90% resolvido algebricamente; IC 95% obtido propagando ±1,96×erro-padrão do coeficiente angular para o instante de cruzamento. R² baixo indica projeção pouco confiável mesmo quando uma data é exibida — sempre leia em conjunto com a tendência bruta na barra acima.</div>';
+  html+='</div>';
+
+  el.innerHTML=html;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   §6 ASSISTENTE SLM/RAG — mock por palavras-chave/templates sobre corpus
+   estático (sem embeddings, sem LLM real de produção — mesmo padrão e
+   mesmo nível de honestidade metodológica do JourneyGraph). Os CÁLCULOS
+   citados pelo Assistente (Markov/Bayes/outlier/regressão) são reais — o
+   Assistente apenas narra corretamente números já calculados em §5, nunca
+   inventa números.
+
+   Corpus organizado nas 5 fontes exigidas pelo §6 do prompt de
+   desenvolvimento: (1) cadastro operacional/de rede, (2) CRM/Call Center,
+   (3) Ouvidoria/Anatel, (4) normas Anatel de service assurance
+   (RQUAL/Selo), (5) boas práticas ITU-T (M.3400/FCAPS) e TM Forum (eTOM,
+   TMF642/TMF628).
+   ════════════════════════════════════════════════════════════════════════ */
+var CORPUS = {
+
+  cadastro: [
+    {id:"cad-01", titulo:"Inventário de elementos de rede", secao:"6.1",
+     tags:["inventario","cadastro","capacidade nominal","fabricante","modelo","instalacao","manutencao","redundancia","olt","pon","cto","pop","core"],
+     texto:"O cadastro de rede do NetGraph é o próprio grafo de topologia (POP → OLT → PON/Splitter → CTO → ONT/CPE): cada elemento carrega capacidade nominal, utilização atual, latência, perda de pacotes, uptime, número de assinantes dependentes (downstream), SLA do contrato mais crítico atendido e estado de redundância configurada. Esse cadastro não é \"contexto de texto\" para o Assistente — é a fonte de verdade que alimenta diretamente as camadas analíticas de Markov, Bayes, outlier e capacidade (§5)."},
+    {id:"cad-02", titulo:"Hierarquia de rede de acesso (FTTH GPON)", secao:"6.1",
+     tags:["hierarquia","olt","pon","splitter","cto","fibra","gpon","xgs-pon","porta","ocupacao"],
+     texto:"A rede de acesso segue a hierarquia típica de FTTH GPON/XGS-PON regional: OLT (Optical Line Terminal) concentra o tráfego de um POP e alimenta splitters ópticos passivos (PON), cada um dividindo o sinal para várias caixas de atendimento (CTO), de onde partem os drops até o ONT/CPE do assinante. Diferente de enlaces ativos, splitters não têm \"banda\"; sua métrica de utilização relevante é ocupação de portas (assinantes conectados / portas disponíveis)."},
+    {id:"cad-03", titulo:"Redundância e pontos únicos de falha (SPOF)", secao:"6.1",
+     tags:["redundancia","spof","ponto unico de falha","dual-homed","uplink","backbone"],
+     texto:"Nem todo enlace da rede tem redundância configurada — no NetGraph sintético, apenas uma parte dos POPs tem uplink duplo (dual-homed) para os dois roteadores de borda; a rede de acesso (POP→OLT→PON→CTO) é, por natureza de custo, majoritariamente single-homed. Um SPOF é qualquer nó cujo caminho até o backbone passa por pelo menos um enlace sem redundância — calculado percorrendo a árvore de topologia até a raiz (Core), não uma marcação manual."},
+    {id:"cad-04", titulo:"Atributos de aresta (enlace)", secao:"6.1",
+     tags:["enlace","aresta","capacidade","utilizacao","latencia","tipo de enlace"],
+     texto:"Cada aresta do grafo carrega tipo de enlace (uplink de fibra, distribuição, splitter óptico, drop), capacidade nominal quando aplicável, utilização, latência e a flag de redundância usada no cálculo de SPOF. Esses atributos alimentam a espessura/estilo da aresta no dígrafo (mais grossa e verde quando redundante)."}
+  ],
+
+  crm: [
+    {id:"crm-01", titulo:"Volume de reclamações do Call Center por zona", secao:"6.2",
+     tags:["crm","call center","reclamacao","lentidao","queda de conexao","sem sinal","volume","7 dias"],
+     texto:"O NetGraph mantém uma série sintética de reclamações do Call Center (CRM) por zona geográfica, categorizadas em lentidão, queda de conexão e sem sinal, com janela de 7 dias. Zonas com elemento de rede em estado Crítico ou Falha recebem reforço de volume de reclamação na base sintética — modelando a correlação real observada em ISPs entre incidente de rede não percebido pela operação e chamado de assinante no SAC."},
+    {id:"crm-02", titulo:"Correlação temporal entre alerta de rede e reclamação no CRM", secao:"6.2",
+     tags:["correlacao","timestamp","cto","zona","ja gerou reclamacao"],
+     texto:"O Assistente responde \"este alerta já gerou reclamações no CRM?\" cruzando a zona do nó em alerta com o volume de reclamações sintéticas da mesma zona nas últimas 24h–7d. Esse cruzamento entra diretamente no cálculo do eixo \"impacto de negócio\" da priorização de alertas (§5.5) — não é um dado decorativo, é usado no score."},
+    {id:"crm-03", titulo:"Categorias de reclamação e mapeamento a sintomas de rede", secao:"6.2",
+     tags:["lentidao","queda de conexao","sem sinal","categoria","sintoma"],
+     texto:"\"Lentidão\" tende a correlacionar com sobrecarga de OLT ou degradação de trânsito upstream; \"queda de conexão\" com falha de equipamento ativo ou instabilidade de energia; \"sem sinal\" com rompimento de fibra. Essa correspondência é usada apenas como leitura de apoio no corpus do Assistente — a causa provável formal de cada alerta vem do cálculo da rede Bayesiana (§5.3), não desta heurística de leitura."}
+  ],
+
+  ouvidoria: [
+    {id:"ouv-01", titulo:"Escalonamento de reclamação de rede à Ouvidoria/Anatel", secao:"6.3",
+     tags:["ouvidoria","anatel","escalonamento","prazo","reclamacao formal","risco"],
+     texto:"Quando um incidente de rede não é resolvido dentro do prazo esperado, a reclamação do assinante no SAC pode escalar para a Ouvidoria interna do ISP e, se ainda insatisfeita, para a Anatel. O NetGraph sinaliza proativamente alertas com risco de escalonamento combinando gravidade técnica (ex.: SPOF em estado Crítico/Falha) com volume de reclamação já acumulado na zona — não substitui o processo formal de Ouvidoria, apenas antecipa o sinal para a operação agir antes da escalada."},
+    {id:"ouv-02", titulo:"Acesso controlado quando a consulta atravessa para assinante identificável", secao:"6.3",
+     tags:["acesso controlado","autenticacao","escopo por papel","log de auditoria","consulta individual","assinante identificavel"],
+     texto:"Sempre que uma consulta de Ouvidoria ou apuração precisa descer do nível de \"elemento de rede agregado\" para \"assinante identificável\" (ex.: qual ONT específico, qual titular), o NetGraph exige o mesmo padrão de acesso controlado já usado no JourneyGraph: autenticação com motivo de acesso, protocolo/referência obrigatório e log de auditoria imutável — ver a tela \"Consulta Individual de Elemento de Rede\". A autenticação é meramente ilustrativa nesta demonstração, não um controle de acesso de produção."},
+    {id:"ouv-03", titulo:"Prazos de resposta (paráfrase, não literal)", secao:"6.3",
+     tags:["prazo de resposta","ouvidoria interna","anatel","dias uteis"],
+     texto:"Em termos gerais e amplamente conhecidos do setor, reclamações abertas junto à Ouvidoria interna de uma prestadora costumam ter prazo de resposta definido em regulamento interno, e reclamações escaladas à Anatel seguem prazo estabelecido no regulamento de atendimento vigente. Este resumo é uma paráfrase genérica para fins de demonstração — os prazos exatos aplicáveis devem ser confirmados com a área regulatória/jurídica antes de qualquer uso operacional, pois podem mudar por atualização normativa."}
+  ],
+
+  normas_anatel: [
+    {id:"rqual-01", titulo:"RQUAL — Regulamento de Qualidade dos Serviços de Telecomunicações", secao:"6.4",
+     tags:["rqual","anatel","resolucao 717","qualidade","scm","banda larga","indicador de qualidade"],
+     texto:"O RQUAL (Regulamento de Qualidade dos Serviços de Telecomunicações, instituído pela Anatel — Resolução nº 717/2019, com revisões periódicas) estabelece indicadores de qualidade aplicáveis a serviços de telecomunicações, incluindo SCM/banda larga fixa: entre eles, metas relacionadas a disponibilidade do serviço e tempo de reparo de interrupções. O NetGraph rastreia, de forma sintética, o tempo em que cada elemento permanece fora do estado Saudável e projeta se a tendência atual (via Markov, §5.2) aponta para descumprimento desses indicadores — sem, no entanto, reproduzir o texto normativo literal. Este é um RESUMO PARAFRASEADO para fins de demonstração comercial — validar a edição vigente com a área regulatória antes de qualquer uso real; a Anatel revisa o regulamento periodicamente e o texto aqui pode estar desatualizado."},
+    {id:"rqual-02", titulo:"Selo/certificação de qualidade Anatel e painel público de desempenho", secao:"6.4",
+     tags:["selo anatel","certificacao","ranking","painel de qualidade","desempenho publico"],
+     texto:"A Anatel mantém instrumentos públicos de aferição e divulgação de desempenho das prestadoras (selo/certificação de qualidade e painéis/rankings correlatos). O NetGraph trata esse tema como referência a ser mantida atualizada pela área regulatória do ISP — propositalmente NÃO fixa números, posições de ranking ou critérios de pontuação no código, para não ficar desatualizado; o produto apenas aponta que os indicadores técnicos rastreados aqui (disponibilidade, tempo de reparo, taxa de falha) são da mesma família dos critérios usados nesses instrumentos públicos."},
+    {id:"rqual-03", titulo:"Disclaimer de paráfrase normativa", secao:"6.4",
+     tags:["disclaimer","parafrase","nao e texto normativo","compliance","juridico"],
+     texto:"Todo texto normativo resumido neste Assistente (RQUAL, Selo Anatel e instrumentos correlatos) é uma paráfrase para fins de demonstração comercial, elaborada a partir de entendimento geral do setor — não é a transcrição literal do regulamento vigente e não deve ser usado como referência jurídica ou de compliance. Antes de qualquer decisão regulatória, consulte o texto oficial atualizado no site da Anatel e a área jurídica/regulatória do ISP."}
+  ],
+
+  itu_tmforum: [
+    {id:"itu-01", titulo:"ITU-T M.3400 e o modelo FCAPS", secao:"6.5",
+     tags:["itu-t","m.3400","fcaps","fault","configuration","accounting","performance","security","gerenciamento tmn"],
+     texto:"A recomendação ITU-T M.3400 descreve as funções de gerenciamento de rede da TMN (Telecommunications Management Network), organizadas classicamente no modelo FCAPS: Fault (falhas), Configuration (configuração), Accounting (contabilização), Performance (desempenho) e Security (segurança). O NetGraph se enquadra sobretudo em Fault Management (detecção, correlação e priorização de alertas, §5.5) e Performance Management (outlier e projeção de capacidade, §5.4) — a camada FCAPS de cada alerta é exibida explicitamente na aba Alertas. Resumo elaborado a partir de material público sobre a recomendação, não é transcrição literal do texto da ITU-T."},
+    {id:"itu-02", titulo:"TM Forum eTOM — processo vertical Assurance", secao:"6.5",
+     tags:["etom","tm forum","gb921","m.3050","assurance","problem handling","service quality management","resource trouble management"],
+     texto:"O eTOM (enhanced Telecom Operations Map, GB921 do TM Forum, incorporado pela ITU-T na série M.3050) organiza os processos de uma operadora em áreas verticais; o NetGraph mapeia diretamente ao processo vertical Assurance, cobrindo em particular Problem Handling (tratamento de problema — a tela de Alertas), Service Quality Management (gestão de qualidade de serviço — vínculo com RQUAL) e Resource Trouble Management (gestão de falha em recurso de rede — a camada de grafos/Markov/Bayes de §5.1–5.3). Mesma referência pública já citada no corpus do JourneyGraph."},
+    {id:"itu-03", titulo:"TM Forum Open APIs — TMF642, TMF628 e nRootCause", secao:"6.5",
+     tags:["tmf642","tmf628","alarm management","performance management","nrootcause","open api","interoperabilidade"],
+     texto:"Como referência de interoperabilidade FUTURA (não implementada nesta demonstração), as Open APIs do TM Forum mais relevantes ao escopo do NetGraph são: TMF642 (Alarm Management — exposição padronizada de alarmes/alertas), TMF628 (Performance Management — exposição de métricas de desempenho) e a família nRootCause (análise de causa raiz). O NetGraph resolve causa raiz internamente via rede Bayesiana (§5.3); expor esse resultado via TMF nRootCause seria o passo natural de integração com um OSS de terceiros, fora do escopo desta demonstração comercial."},
+    {id:"itu-04", titulo:"Fault Management vs. Performance Management no NetGraph", secao:"6.5",
+     tags:["fault management","performance management","camada","classificacao de alerta"],
+     texto:"Cada alerta do NetGraph é rotulado com a camada FCAPS mais próxima: Fault Management quando o nó está em estado Degradado/Crítico/Falha (evento discreto de falha), Performance Management quando o gatilho é um outlier estatístico de desempenho (latência/perda/utilização) sem o nó necessariamente estar \"fora do ar\". Essa classificação aparece no filtro \"Camada FCAPS\" da tela de Alertas."}
+  ]
+};
+
+var _ASSIST_TOPICS = {DADO_VIVO:"DADO_VIVO", CADASTRO:"CADASTRO", CRM:"CRM", OUVIDORIA:"OUVIDORIA", NORMAS:"NORMAS", ITU_TMF:"ITU_TMF", METODO:"METODO"};
+var _ASSIST_REGRAS = [
+  {topico:_ASSIST_TOPICS.NORMAS, corpora:["normas_anatel"],
+   palavras:["rqual","selo anatel","anatel","resolucao 717","qualidade do servico","disponibilidade","tempo de reparo","certificacao de qualidade","ranking anatel"]},
+  {topico:_ASSIST_TOPICS.ITU_TMF, corpora:["itu_tmforum"],
+   palavras:["itu-t","m.3400","fcaps","etom","tm forum","m.3050","tmf642","tmf628","nrootcause","assurance","problem handling","alarm management","performance management"]},
+  {topico:_ASSIST_TOPICS.OUVIDORIA, corpora:["ouvidoria"],
+   palavras:["ouvidoria","escalonamento","escalar","reclamacao formal","prazo de resposta","assinante identificavel"]},
+  {topico:_ASSIST_TOPICS.CRM, corpora:["crm"],
+   palavras:["crm","call center","sac","reclamacao","lentidao","queda de conexao","sem sinal","chamado","ticket"]},
+  {topico:_ASSIST_TOPICS.METODO, corpora:["cadastro"],
+   palavras:["markov","bayes","bayesiana","outlier","mad","z-score","regressao","metodologia","como e calculado","rag","llm","mock","heuristica","real ou mock","spof","blast radius","centralidade","betweenness"]},
+  {topico:_ASSIST_TOPICS.CADASTRO, corpora:["cadastro"],
+   palavras:["inventario","cadastro","olt","pon","splitter","cto","ont","capacidade nominal","fabricante","hierarquia","porta","redundancia"]},
+  {topico:_ASSIST_TOPICS.DADO_VIVO, corpora:[],
+   palavras:["quantos alertas","qual olt","qual pop","maior risco","pior estado","estado atual","top ","ranking","agora","quantos assinantes","quantos spof"]}
+];
+function _assistNorm(txt){ return (txt||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
+function _assistTokenize(txt){
+  var STOP=new Set(["a","o","as","os","de","da","do","das","dos","e","ou","que","um","uma","para","com","sem","em","no","na","nos","nas","por","se","esta","essa","isso","ao","aos","como","qual","quais"]);
+  return _assistNorm(txt).replace(/[^\p{L}\p{N}\s]/gu," ").split(/\s+/).filter(function(w){return w.length>2 && !STOP.has(w);});
+}
+function classifyAssistIntent(pergunta){
+  var alvo=_assistNorm(pergunta);
+  var pontuacoes=_ASSIST_REGRAS.map(function(r){
+    var score=r.palavras.reduce(function(acc,p){ return alvo.indexOf(_assistNorm(p))>-1?acc+1:acc; },0);
+    return {regra:r, score:score};
+  });
+  var maxScore=Math.max.apply(null,pontuacoes.map(function(p){return p.score;}));
+  if(maxScore===0) return {topico:_ASSIST_TOPICS.METODO, corpora:["cadastro"]};
+  var best=pontuacoes.filter(function(p){return p.score===maxScore;})[0].regra;
+  return {topico:best.topico, corpora:best.corpora};
+}
+function searchAssistCorpus(pergunta, corporaAlvo, maxResults){
+  maxResults=maxResults||3;
+  var tokens=_assistTokenize(pergunta);
+  var docs=[];
+  (corporaAlvo.length?corporaAlvo:Object.keys(CORPUS)).forEach(function(cKey){
+    (CORPUS[cKey]||[]).forEach(function(d){ docs.push(Object.assign({corpus:cKey}, d)); });
+  });
+  var scored=docs.map(function(d){
+    var hay=_assistNorm(d.titulo+" "+d.texto+" "+d.tags.join(" "));
+    var score=tokens.reduce(function(acc,t){ return hay.indexOf(t)>-1?acc+1:acc; },0);
+    d.tags.forEach(function(tag){ if(_assistNorm(pergunta).indexOf(_assistNorm(tag))>-1) score+=2; });
+    return {doc:d, score:score};
+  }).filter(function(s){return s.score>0;});
+  scored.sort(function(a,b){return b.score-a.score;});
+  if(!scored.length){
+    scored = docs.slice(0,maxResults).map(function(d){return {doc:d,score:0};});
+  }
+  return scored.slice(0,maxResults).map(function(s){
+    return {titulo:s.doc.titulo, secao:s.doc.secao, corpus:s.doc.corpus, fonte:"Tech Reference NetGraph §"+s.doc.secao, texto:s.doc.texto};
+  });
+}
+
+/* ── Tool-calling sobre dado ao vivo (§5, calculado de verdade — não um
+   texto fixo): perguntas de existência/quantidade/ranking respondidas
+   consultando NODES/ALERTS diretamente, sem passar pela busca documental. */
+function queryAssistLiveData(pergunta){
+  var q=_assistNorm(pergunta);
+  if(/quantos alerta|alertas ativ|alertas critic/.test(q)){
+    var crit=ALERTS.filter(function(a){return a.severidade==="critico"||a.severidade==="falha";}).length;
+    return "Há "+ALERTS.length+" alerta(s) ativo(s) no total, sendo "+crit+" em estado Crítico ou Falha (priorizados por score combinado gravidade × impacto — ver aba Alertas).";
+  }
+  if(/qual (olt|pop|elemento).*(maior risco|pior|mais critic)/.test(q) || /maior risco/.test(q)){
+    var worst = Object.values(NODES).filter(function(n){return n.type!=="cto";}).map(function(n){ return {n:n, r:riskIndex(n)}; }).sort(function(a,b){return b.r-a.r;})[0];
+    return "O elemento com maior índice de risco combinado agora é "+worst.n.label+" (risco "+worst.r+"/100, estado "+STATE_LABEL[worst.n.health]+"). O índice combina Markov (35%), outlier ML (30%), centralidade (20%) e SPOF (15%) — ver painel de detalhe do nó na aba Topologia.";
+  }
+  if(/quantos spof|pontos unicos de falha|ponto unico de falha/.test(q)){
+    var n1=Object.values(NODES).filter(function(n){return n.type!=="cto" && isSPOF(n.id);}).length;
+    return "Há "+n1+" elemento(s) de rede (excluindo CTOs) classificados como ponto único de falha (SPOF) — sem caminho redundante até o backbone.";
+  }
+  if(/quantos assinantes/.test(q)){
+    return "A base sintética tem "+fmtN(totalSubsUnique())+" assinantes agregados por CTO (folhas do grafo) na topologia gerada.";
+  }
+  if(/quantas zonas|quantos pop/.test(q)){
+    return "A topologia tem "+ZONES.length+" POPs, um por zona da Grande Florianópolis (mesmo mapeamento do StepGraph): "+ZONES.map(function(z){return z.label;}).join(", ")+".";
+  }
+  if(/qual.*saturac|quando satura|previsao de capacidade/.test(q)){
+    var soon = Object.values(NODES).filter(function(n){return n.type==="pop"||n.type==="olt";}).map(function(n){return {n:n,cap:capacityProjection(n,90)};}).filter(function(p){return p.cap.hasProjection;}).sort(function(a,b){return a.cap.hoursFromNow-b.cap.hoursFromNow;})[0];
+    if(!soon) return "Nenhum POP/OLT tem projeção de saturação relevante na janela observada — ver aba Capacidade para o detalhamento completo por elemento.";
+    return "O elemento com saturação (90% de utilização) mais próxima é "+soon.n.label+", projetada para "+fmtDate(soon.cap.etaDate)+" (IC 95%: "+fmtDate(soon.cap.ciLowDate)+" – "+fmtDate(soon.cap.ciHighDate)+"), por regressão linear sobre a série sintética — ver aba Capacidade.";
+  }
+  return null;
+}
+
+function montarRespostaAssist(intent, docs, dadoVivo){
+  if(dadoVivo) return dadoVivo;
+  if(intent.topico===_ASSIST_TOPICS.METODO){
+    return "Os cálculos analíticos do NetGraph (matriz de Markov, rede Bayesiana, detector de outlier por MAD e regressão de capacidade) são reais, computados em JavaScript client-side sobre a base sintética — não são heurísticas de score disfarçadas de modelo, ao contrário do que o próprio JourneyGraph admite fazer no seu Anexo B. O MECANISMO deste Assistente, porém, é o mesmo mock por palavras-chave/templates sobre um corpus estático (sem embeddings, sem LLM real de produção) usado no JourneyGraph — ele narra corretamente os números já calculados em §5, mas não \"raciocina\" livremente. "
+      + (docs[0] ? ("Ver também: "+docs[0].titulo+".") : "");
+  }
+  if(!docs.length) return "Não encontrei um trecho do corpus técnico diretamente relacionado — tente perguntar sobre topologia/cadastro de rede, CRM, Ouvidoria/Anatel, RQUAL/Selo, ou ITU-T/TM Forum.";
+  var texto=docs[0].texto;
+  return texto + (docs.length>1 ? (" Ver também: "+docs.slice(1).map(function(d){return d.titulo;}).join("; ")+".") : "");
+}
+function askAssistant(pergunta, contexto){
+  if(contexto && contexto.alertId){
+    var r=explainAlertAnswer(contexto.alertId);
+    if(r) return r;
+  }
+  var dadoVivo = queryAssistLiveData(pergunta);
+  if(dadoVivo){
+    return {resposta: montarRespostaAssist({topico:_ASSIST_TOPICS.DADO_VIVO}, [], dadoVivo), topico:_ASSIST_TOPICS.DADO_VIVO, citacoes:[]};
+  }
+  var intent=classifyAssistIntent(pergunta);
+  var corpora = intent.corpora.length ? intent.corpora : ["cadastro"];
+  var docs = searchAssistCorpus(pergunta, corpora);
+  return {
+    resposta: montarRespostaAssist(intent, docs, null),
+    topico: intent.topico,
+    citacoes: docs.map(function(d){ return {titulo:d.titulo, secao:d.secao, corpus:d.corpus, fonte:d.fonte}; })
+  };
+}
+
+var _assistHistory=[];
+function _assistBuildMsgsHtml(){
+  return _assistHistory.map(function(m){
+    if(m.role==="user"){
+      return '<div style="align-self:flex-end;max-width:min(760px,85%);background:#1A3050;color:#E0F0FF;padding:10px 14px;border-radius:10px 10px 2px 10px;font-size:13px;line-height:1.7;">'+m.texto+'</div>';
+    }
+    var citHtml=(m.citacoes||[]).map(function(c){
+      var fonte=c.fonte||("Tech Reference §"+c.secao);
+      return '<div style="font-size:11px;color:#567898;border-left:2px solid #E87000;padding-left:8px;margin-top:8px;line-height:1.6;">'+fonte+' — '+c.titulo+'</div>';
+    }).join("");
+    return '<div style="align-self:stretch;width:100%;background:#0C1829;border:1px solid #1A3050;color:#D0E8FF;padding:14px 18px;border-radius:10px 10px 10px 2px;font-size:14px;line-height:1.85;box-sizing:border-box;">'+m.texto+citHtml+'</div>';
+  }).join("");
+}
+var _assistShowSuggestions = {};
+var _ASSIST_SUGGESTIONS_MAIN = [
+  "Os modelos são reais ou heurística? (Markov/Bayes/outlier)",
+  "Quantos pontos únicos de falha (SPOF) existem agora?",
+  "Qual elemento tem maior risco agora?",
+  "O que é o RQUAL da Anatel?",
+  "Como o NetGraph se relaciona com o eTOM Assurance?",
+  "Quando o próximo elemento satura capacidade?"
+];
+var _ASSIST_SUGGESTIONS_ALERTS = [
+  "Este alerta já gerou reclamações no CRM?",
+  "Como é calculada a causa provável de um alerta?",
+  "O que significa SPOF?",
+  "Quais boas práticas ITU-T/TM Forum o NetGraph cobre?",
+  "Quantos alertas críticos existem agora?"
+];
+function _assistSuggestClick(idPrefix, text){
+  var input=document.getElementById(idPrefix+"-input");
+  if(input) input.value=text;
+  _assistSendFrom(idPrefix);
+}
+function _assistToggleSuggestions(idPrefix){
+  _assistShowSuggestions[idPrefix]=!_assistShowSuggestions[idPrefix];
+  renderAssistant(); renderAlertsAssistant();
+}
+function _assistSuggestionsHtml(idPrefix, suggestions){
+  if(!suggestions || !suggestions.length) return "";
+  var chips=suggestions.map(function(s){
+    return '<button onclick="_assistSuggestClick(\''+idPrefix+'\',\''+s.replace(/'/g,"\\'")+'\')" style="text-align:left;background:#0C1829;border:1px solid #2A4A6F;color:#9ACCE0;font-size:11px;padding:6px 10px;border-radius:14px;cursor:pointer;font-family:Arial,sans-serif;">&#128172; '+s+'</button>';
+  }).join("");
+  return '<div style="display:flex;flex-direction:column;gap:6px;"><div style="font-size:10px;color:#567898;text-transform:uppercase;letter-spacing:.05em;">Sugestões de pergunta</div>'+chips+'</div>';
+}
+function _assistPanelHtml(idPrefix, placeholder, suggestions){
+  var hasHistory=_assistHistory.length>0;
+  var showSugg=!hasHistory || !!_assistShowSuggestions[idPrefix];
+  var suggHtml=showSugg?_assistSuggestionsHtml(idPrefix, suggestions):"";
+  var msgsHtml=_assistBuildMsgsHtml();
+  var body = hasHistory ? (msgsHtml+(suggHtml?'<div style="margin-top:4px">'+suggHtml+'</div>':"")) : ('<div style="color:#3A6080;font-size:12px;margin-bottom:10px">'+placeholder+'</div>'+suggHtml);
+  return '<div id="'+idPrefix+'-msgs" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:8px 0;">'+body+'</div>'
+    +'<div style="display:flex;gap:8px;margin-top:10px;align-items:center;">'
+    +(hasHistory?('<button onclick="_assistToggleSuggestions(\''+idPrefix+'\')" style="background:transparent;border:1px solid #2A4A6F;color:#8ABEDF;font-size:11px;padding:8px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0;">'+(showSugg?'&#10005; Sugestões':'&#128161; Sugestões')+'</button>'):"")
+    +'<input id="'+idPrefix+'-input" type="text" placeholder="Pergunte algo..." style="flex:1;min-width:0;background:#07101C;border:1px solid #2A4A6F;color:#D0E8FF;padding:8px 10px;border-radius:6px;font-size:12px;">'
+    +'<button onclick="_assistSendFrom(\''+idPrefix+'\')" style="background:#E87000;border:none;color:#fff;font-weight:700;padding:8px 14px;border-radius:6px;cursor:pointer;">Enviar</button></div>';
+}
+function _assistAttachEvents(idPrefix){
+  var msgsBox=document.getElementById(idPrefix+"-msgs");
+  if(msgsBox) msgsBox.scrollTop=msgsBox.scrollHeight;
+  var input=document.getElementById(idPrefix+"-input");
+  if(input) input.addEventListener("keydown", function(ev){ if(ev.key==="Enter") _assistSendFrom(idPrefix); });
+}
+function renderAssistant(){
+  var el=document.getElementById("assistant-content");
+  if(!el) return;
+  el.innerHTML = '<div style="width:100%;display:flex;flex-direction:column;height:100%;">'
+    +'<div style="font-size:11px;color:#567898;margin-bottom:8px;">&#129302; Assistente RAG/SLM (mock por palavras-chave/templates sobre corpus estático, sem embeddings/LLM real de produção) — os cálculos de Markov/Bayes/outlier/capacidade que ele narra são reais (§5), calculados client-side. Pergunte sobre topologia/cadastro de rede, CRM, Ouvidoria/Anatel, RQUAL/Selo ou ITU-T/TM Forum.</div>'
+    +_assistPanelHtml("assist", "Nenhuma pergunta ainda — escolha uma sugestão abaixo ou digite a sua:", _ASSIST_SUGGESTIONS_MAIN)
+    +'</div>';
+  _assistAttachEvents("assist");
+}
+function renderAlertsAssistant(){
+  var el=document.getElementById("alerts-assist-box");
+  if(!el) return;
+  el.innerHTML = '<div style="font-size:10px;color:#567898;text-transform:uppercase;margin-bottom:6px;flex-shrink:0;">&#129302; Assistente</div>'
+    +'<div style="display:flex;flex-direction:column;flex:1;min-height:0;">'
+    +_assistPanelHtml("alertsassist", 'Clique em "Perguntar ao Assistente" num alerta, ou escolha uma sugestão:', _ASSIST_SUGGESTIONS_ALERTS)
+    +'</div>';
+  _assistAttachEvents("alertsassist");
+}
+function _assistSendFrom(idPrefix){
+  var input=document.getElementById(idPrefix+"-input");
+  var pergunta=input?input.value.trim():"";
+  if(!pergunta) return;
+  _assistHistory.push({role:"user", texto:pergunta});
+  var r=askAssistant(pergunta, null);
+  _assistHistory.push({role:"assistant", texto:r.resposta, citacoes:r.citacoes});
+  if(input) input.value="";
+  renderAssistant();
+  renderAlertsAssistant();
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   §7.4 CONSULTA INDIVIDUAL DE ELEMENTO DE REDE (modo restrito) — análoga
+   direta à "Consulta Individual de Assinante" do JourneyGraph: senha
+   ilustrativa (não é controle de acesso de produção), log de auditoria
+   imutável, e só disponível quando a consulta precisa descer até o nível
+   de ONT/assinante específico. Três hipóteses de uso, iguais ao
+   JourneyGraph: interceptação legal, apuração de Ouvidoria, SLA de NOC.
+   ════════════════════════════════════════════════════════════════════════ */
+var RST_PASSWORD = "auditoria2026";
+var S_restricted = {authed:false, motivo:null, protocolo:null, audit:[], current:null};
+var ALL_CTO_IDS = Object.keys(NODES).filter(function(id){ return NODES[id].type==="cto"; });
+
+function rstGateOpen(){
+  document.getElementById("rst-motivo").value="";
+  document.getElementById("rst-protocolo").value="";
+  document.getElementById("rst-senha").value="";
+  document.getElementById("rst-err").style.display="none";
+  document.getElementById("restricted-overlay").style.display="flex";
+  document.getElementById("rst-motivo").focus();
+}
+function rstGateClose(){ document.getElementById("restricted-overlay").style.display="none"; }
+function rstAuthenticate(){
+  var motivo=document.getElementById("rst-motivo").value;
+  var protocolo=document.getElementById("rst-protocolo").value.trim();
+  var senha=document.getElementById("rst-senha").value;
+  var err=document.getElementById("rst-err");
+  var msg = !motivo ? "Selecione o motivo do acesso."
+    : !protocolo ? "Informe o protocolo/referência do acesso."
+    : senha!==RST_PASSWORD ? "Senha incorreta."
+    : null;
+  if(msg){ err.textContent=msg; err.style.display="block"; return; }
+  S_restricted.authed=true;
+  S_restricted.motivo=motivo;
+  S_restricted.protocolo=protocolo;
+  S_restricted.audit.push({ts:new Date().toLocaleString("pt-BR"), motivo:motivo, protocolo:protocolo, elemento:"—", acao:"Login no modo restrito"});
+  rstGateClose();
+  renderRestricted();
+}
+function rstLogout(){
+  S_restricted.authed=false; S_restricted.motivo=null; S_restricted.protocolo=null; S_restricted.current=null;
+  document.querySelector('.nav-btn[data-screen="topology"]').click();
+}
+
+/* Hash determinística de string → CTO existente + índice de porta/ONT —
+   mesmo princípio do JourneyGraph (mulberry32 semeada pelo ID buscado):
+   o mesmo texto de busca sempre resolve ao mesmo CTO/ONT sintético,
+   sem precisar embutir uma tabela de milhares de ONTs no arquivo. */
+function rstResolveQuery(raw){
+  raw=(raw||"").trim();
+  if(!raw) return null;
+  var rnd=seedRng("rst-"+raw.toUpperCase());
+  if(NODES[raw] && NODES[raw].type==="cto"){
+    var cto=NODES[raw];
+    return {ctoId:raw, ontIndex:1+Math.floor(rnd()*cto.subscribers)};
+  }
+  var ctoId = ALL_CTO_IDS[Math.floor(rnd()*ALL_CTO_IDS.length)];
+  var cto=NODES[ctoId];
+  return {ctoId:ctoId, ontIndex:1+Math.floor(rnd()*cto.subscribers)};
+}
+var RST_CAUSAS_DIST=[{causa:"User-Request",pct:68},{causa:"Lost-Carrier (ONT)",pct:16},{causa:"Power-Failure (CPE)",pct:8},{causa:"Signal-Degradation",pct:5},{causa:"Admin-Reset",pct:3}];
+function rstWeightedPick(rnd, items, weightFn){
+  var total=0; items.forEach(function(it){total+=weightFn(it)||0;});
+  var r=rnd()*total, acc=0;
+  for(var i=0;i<items.length;i++){ acc+=weightFn(items[i])||0; if(r<=acc) return items[i]; }
+  return items[items.length-1];
+}
+function rstGenProfile(query){
+  var resolved=rstResolveQuery(query);
+  if(!resolved) return null;
+  var cto=NODES[resolved.ctoId];
+  var pon=NODES[PARENT[resolved.ctoId]];
+  var olt=NODES[PARENT[pon.id]];
+  var pop=NODES[PARENT[olt.id]];
+  var coreEdge = EDGES.find(function(e){ return e.target===pop.id; });
+  var core=NODES[coreEdge.source];
+  var rnd=seedRng("rst-profile-"+resolved.ctoId+"-"+resolved.ontIndex);
+  var isCorporate = cto.corporate && resolved.ontIndex===1;
+  var ontId = "ONT"+String(resolved.ontIndex).padStart(3,"0")+"-"+resolved.ctoId.toUpperCase();
+  var online = cto.health!=="falha" || rnd()>0.5;
+  var rxPower = online ? -(randRange(rnd,14,26)).toFixed(1) : -(randRange(rnd,28,32)).toFixed(1);
+  var sessoes=[];
+  for(var i=0;i<5;i++){
+    var causa=rstWeightedPick(rnd, RST_CAUSAS_DIST, function(c){return c.pct;}).causa;
+    var diasAtras=Math.floor(rnd()*10)+1;
+    var d=new Date(NOW_TS); d.setDate(d.getDate()-diasAtras);
+    sessoes.push({data:d.toLocaleDateString("pt-BR"), duracao:Math.round(20+rnd()*600), causa:causa});
+  }
+  return {
+    query:query, ontId:ontId, ctoId:cto.id, cto:cto, pon:pon, olt:olt, pop:pop, core:core,
+    corporate:isCorporate, online:online, rxPower:Number(rxPower), plano: isCorporate?"Corporativo — SLA diferenciado":pick(["Residencial 300 Mbps","Residencial 500 Mbps","Residencial 1 Gbps"],rnd),
+    zona:(ZONES.find(function(z){return z.id===cto.zone;})||{}).label, sessoes:sessoes
+  };
+}
+function rstSearch(){
+  var inputEl=document.getElementById("rst-search-input");
+  var q=inputEl?inputEl.value.trim():"";
+  if(!q) return;
+  S_restricted.current=rstGenProfile(q);
+  S_restricted.audit.push({ts:new Date().toLocaleString("pt-BR"), motivo:S_restricted.motivo, protocolo:S_restricted.protocolo, elemento:S_restricted.current.ontId, acao:"Consulta de elemento/ONT individual"});
+  renderRestricted();
+}
+function rstRandom(){
+  var ctoId=pick(ALL_CTO_IDS, Math.random); /* aleatoriedade real aqui é intencional (botão "Aleatório") */
+  var idx=1+Math.floor(Math.random()*NODES[ctoId].subscribers);
+  var q=ctoId+"#"+idx;
+  var inputEl=document.getElementById("rst-search-input");
+  if(inputEl) inputEl.value=q;
+  S_restricted.current=rstGenProfile(ctoId);
+  S_restricted.audit.push({ts:new Date().toLocaleString("pt-BR"), motivo:S_restricted.motivo, protocolo:S_restricted.protocolo, elemento:S_restricted.current.ontId, acao:"Consulta de elemento/ONT individual (aleatória)"});
+  renderRestricted();
+}
+function renderRestricted(){
+  var el=document.getElementById("restricted-content");
+  if(!el) return;
+  if(!S_restricted.authed){
+    el.innerHTML='<div style="font-size:12px;color:#567898;">Autenticação necessária para acessar esta tela. <a href="#" onclick="rstGateOpen();return false;" style="color:#E87000;">Autenticar</a></div>';
+    return;
+  }
+  var html='<div class="rst-banner">&#9888; Modo restrito ativo — motivo: <b>'+S_restricted.motivo+'</b> &middot; protocolo: <b>'+S_restricted.protocolo+'</b> &middot; <a href="#" onclick="rstLogout();return false;">Sair do modo restrito</a></div>';
+  html+='<div class="rst-search"><input type="text" id="rst-search-input" placeholder="ID da CTO (ex.: cto-centro-0-p0-c0) ou qualquer texto identificador" value="'+(S_restricted.current?S_restricted.current.query:'')+'" onkeydown="if(event.key===\'Enter\')rstSearch();"><button onclick="rstSearch()">Buscar</button><button class="rst-random" onclick="rstRandom()">Aleatório</button></div>';
+
+  var pf=S_restricted.current;
+  if(pf){
+    html+='<div class="rst-profile">';
+    html+='<div style="font-size:15px;font-weight:700;color:#F0F8FF;margin-bottom:2px;">'+pf.ontId+(pf.corporate?'<span class="corp-badge">SLA</span>':'')+'</div>';
+    html+='<div style="font-size:11px;color:#567898;margin-bottom:10px;">Caminho: '+pf.core.label+' → '+pf.pop.label+' → '+pf.olt.label+' → '+pf.pon.label+' → '+pf.cto.label+'</div>';
+    function rrow(k,v){ return '<div class="rst-profile-row"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>'; }
+    html+=rrow("Status", pf.online?'<span style="color:#2ECC71;">Online</span>':'<span style="color:#FF4444;">Offline</span>');
+    html+=rrow("Plano/SLA", pf.plano);
+    html+=rrow("Zona", pf.zona);
+    html+=rrow("Potência óptica recebida (Rx)", pf.rxPower+" dBm");
+    html+=rrow("CTO", pf.ctoId+" ("+pf.cto.portsUsed+"/"+pf.cto.capacityPorts+" portas)");
+    html+=rrow("OLT", pf.olt.label+" — util. "+Math.round(pf.olt.util)+"%");
+    html+=rrow("Assinantes na mesma CTO", pf.cto.subscribers);
+    html+='</div>';
+
+    html+='<div style="background:#0C1829;border:1px solid #1A3050;border-radius:10px;padding:14px;margin-bottom:16px;">';
+    html+='<div style="font-size:11px;color:#8ABEDF;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Dígrafo do caminho (arraste para fixar, clique para detalhe)</div>';
+    html+='<svg id="rst-digraph-svg" style="width:100%;height:280px;background:#060E18;border-radius:8px;border:1px solid #0F1E30;touch-action:none;"></svg>';
+    html+='<div id="rst-node-info" style="font-size:11.5px;color:#8ABEDF;margin-top:8px;"></div>';
+    html+='</div>';
+
+    html+='<div style="background:#0C1829;border:1px solid #1A3050;border-radius:10px;padding:14px;margin-bottom:16px;">';
+    html+='<div style="font-size:11px;color:#8ABEDF;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Últimas 5 sessões (Acct-Terminate-Cause sintético)</div>';
+    html+='<div style="overflow-x:auto;"><table class="rst-audit-table"><tr><th>Data</th><th>Duração (s)</th><th>Causa</th></tr>';
+    pf.sessoes.forEach(function(s){ html+='<tr><td>'+s.data+'</td><td>'+s.duracao+'</td><td>'+s.causa+'</td></tr>'; });
+    html+='</table></div></div>';
+  } else {
+    html+='<div style="text-align:center;padding:20px;color:#3A6080;font-size:12px;background:#0C1829;border:1px solid #1A3050;border-radius:8px;margin-bottom:16px;">Nenhuma consulta feita ainda nesta sessão.</div>';
+  }
+
+  html+='<div style="font-size:11px;color:#8ABEDF;font-weight:700;text-transform:uppercase;margin:14px 0 8px;">Trilha de auditoria (imutável, nesta sessão)</div>';
+  html+='<div style="overflow-x:auto;"><table class="rst-audit-table"><tr><th>Quando</th><th>Ação</th><th>Elemento</th><th>Motivo</th><th>Protocolo</th></tr>';
+  S_restricted.audit.slice().reverse().forEach(function(l){
+    html+='<tr><td>'+l.ts+'</td><td>'+l.acao+'</td><td>'+l.elemento+'</td><td>'+l.motivo+'</td><td>'+l.protocolo+'</td></tr>';
+  });
+  html+='</table></div>';
+
+  el.innerHTML=html;
+  if(pf) rstDrawDigraph(pf);
+}
+
+var rstSim=null;
+function rstDrawDigraph(pf){
+  var svgEl=document.getElementById("rst-digraph-svg");
+  if(!svgEl) return;
+  var svg=d3.select(svgEl);
+  svg.selectAll("*").remove();
+  var W=svgEl.clientWidth||500, H=svgEl.clientHeight||280;
+
+  var chain=[
+    {id:pf.core.id, label:"CORE", node:pf.core},
+    {id:pf.pop.id, label:"POP", node:pf.pop},
+    {id:pf.olt.id, label:"OLT", node:pf.olt},
+    {id:pf.pon.id, label:"PON", node:pf.pon},
+    {id:pf.cto.id, label:"CTO", node:pf.cto},
+    {id:"ont-"+pf.ontId, label:"ONT", node:{label:pf.ontId, health:pf.online?"saudavel":"falha", type:"ont"}}
+  ];
+  var links=[]; for(var i=0;i<chain.length-1;i++) links.push({source:chain[i].id, target:chain[i+1].id});
+
+  var nmap={}; chain.forEach(function(c){nmap[c.id]=c;});
+  var linkData=links.map(function(l){return {source:nmap[l.source], target:nmap[l.target]};});
+
+  if(rstSim) rstSim.stop();
+  rstSim=d3.forceSimulation(chain)
+    .force("link", d3.forceLink(linkData).distance(70).strength(0.6))
+    .force("charge", d3.forceManyBody().strength(-220))
+    .force("center", d3.forceCenter(W/2,H/2))
+    .force("collide", d3.forceCollide().radius(26))
+    .alpha(0.9).alphaDecay(0.04);
+
+  var link=svg.append("g").selectAll("line").data(linkData).enter().append("line").attr("stroke","#2A4A6F").attr("stroke-width",1.6);
+  var node=svg.append("g").selectAll("g").data(chain).enter().append("g").style("cursor","pointer")
+    .call(d3.drag()
+      .on("start", function(ev,d){ if(!ev.active) rstSim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on("drag", function(ev,d){ d.fx=ev.x; d.fy=ev.y; })
+      .on("end", function(ev,d){ if(!ev.active) rstSim.alphaTarget(0); }))
+    .on("click", function(ev,d){ _rstShowNodeInfo(d); });
+
+  node.append("circle").attr("r",20)
+    .attr("fill", function(d){ return d.node.type==="ont" ? (d.node.health==="saudavel"?"#2ECC71":"#FF4444") : (STATE_COLOR[d.node.health]||"#12324A"); })
+    .attr("stroke","#0A1422").attr("stroke-width",1.5);
+  node.append("text").text(function(d){return d.label;}).attr("text-anchor","middle").attr("dy",4)
+    .attr("font-size",8).attr("fill","#0A1422").attr("font-weight",700).attr("font-family","Arial").attr("pointer-events","none");
+
+  rstSim.on("tick", function(){
+    link.attr("x1",function(d){return d.source.x;}).attr("y1",function(d){return d.source.y;})
+        .attr("x2",function(d){return d.target.x;}).attr("y2",function(d){return d.target.y;});
+    node.attr("transform", function(d){return "translate("+d.x+","+d.y+")";});
+  });
+}
+function _rstShowNodeInfo(d){
+  var el=document.getElementById("rst-node-info");
+  if(!el) return;
+  var n=d.node;
+  if(n.type==="ont"){
+    el.innerHTML="<b>"+n.label+"</b> — "+(n.health==="saudavel"?"online":"offline (sinal degradado/ausente)");
+  } else {
+    el.innerHTML="<b>"+n.label+"</b> — estado "+STATE_LABEL[n.health]+", utilização "+Math.round(n.util||n.portOccupancyPct||0)+"%, "+n.subsDownstream+" assinante(s) downstream.";
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   INIT — tela inicial é Topologia (classe screen-topology já no <body>).
+   Marcador NETGRAPH_INIT_START usado pelo harness de teste (Node, sem D3)
+   para truncar o script antes das chamadas que dependem de D3/DOM real.
+   ════════════════════════════════════════════════════════════════════════ */
+/* NETGRAPH_INIT_START */
+renderMetrics();
+renderZoneList();
+renderGraph();
+</script>
+</body>
+</html>
