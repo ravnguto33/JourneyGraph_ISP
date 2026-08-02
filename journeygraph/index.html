@@ -1300,6 +1300,62 @@ function bmExplainAlert(alert){
   };
 }
 
+/* ── Ação recomendada (dimensão 6 — "o que fazer") por causa Bayesiana mais
+   provável. Mesmo padrão de encaminhamento Nível 1 semi-automático já usado
+   no restante do Painel de Alertas (botões de e-mail/WhatsApp) e no
+   NetGraph (recommendedAction). ── */
+var BM_CAUSE_ACTIONS = {
+  sobrecarga_zona: "Avaliar reforço de capacidade de rede na área de maior concentração desta persona e balanceamento de carga entre OLT/PON.",
+  mix_trafego: "Confirmar se o novo padrão de consumo é estrutural (upsell de plano) ou pontual antes de investir em capacidade.",
+  degradacao_cpe_wifi: "Campanha de diagnóstico remoto de CPE/Wi-Fi para a persona afetada — verificar firmware e canal de rádio.",
+  efeito_sazonal: "Monitorar mais 1–2 períodos antes de agir — padrão sazonal tende a reverter sem intervenção.",
+  crescimento_organico: "Planejar expansão de capacidade da OLT (ver aba Qualidade — Congestionamento OLT), priorizada pelo tamanho da persona.",
+  concentracao_horario_pico: "Avaliar QoS/priorização de tráfego no horário de pico ou oferta de migração de uso para fora do pico.",
+  evento_pontual_zona: "Confirmar com o NOC se há evento de manutenção/incidente vizinho desviando tráfego para este equipamento.",
+  degradacao_equip_compartilhado: "Acionar engenharia de rede para diagnóstico do NAS/OLT compartilhado por esta persona antes que vire volume de chamados no SAC.",
+  instabilidade_energia_zona: "Verificar UPS/energia dos equipamentos de acesso que atendem esta persona.",
+  ruido_amostral: "Aguardar mais períodos de dados antes de agir — segmento pequeno, sinal ainda não é conclusivo.",
+  plano_subdimensionado: "Campanha de upgrade de plano direcionada a esta persona (ver aba Insights — Upsell Score).",
+  crescimento_consumo: "Acompanhar a tendência — se sustentada, priorizar upgrade de capacidade/plano para esta persona.",
+  concentracao_streaming_hd: "Avaliar shaping/QoS para streaming HD/4K no horário de pico, sem penalizar as demais categorias.",
+  lancamento_conteudo_exclusivo: "Confirmar com o time de conteúdo/parcerias se há lançamento recente concentrando consumo em um único SVA.",
+  mudanca_habito_persona: "Investigar se a mudança de hábito reflete redução de engajamento (risco de churn) — cruzar com Churn Signal desta persona.",
+  saida_parceiro_sva: "Confirmar com parcerias se um concorrente SVA saiu do ar ou mudou de política, concentrando ainda mais o consumo remanescente.",
+  mudanca_comportamento_download: "Comunicação proativa de termos de uso para a persona antes de considerar shaping de tráfego.",
+  evento_sazonal_conteudo: "Monitorar — pico sazonal de P2P tende a reverter sem intervenção de rede.",
+  adocao_ferramenta_especifica: "Avaliar QoS diferenciada para a persona se o padrão persistir além de 2–3 períodos.",
+  mudanca_real_comportamento: "Investigar a categoria/SVA responsável (dominant_shift em Qualidade — Sigma Topológico) antes de qualquer ação de rede.",
+  lancamento_novo_servico: "Confirmar lançamento de novo SVA/serviço no período — variação pode ser esperada, não incidente.",
+  ruido_estatistico_janela_curta: "Aguardar mais períodos — variação pode estar dentro do ruído normal da métrica para esta persona.",
+  instabilidade_nas_olt: "Acionar NOC para diagnóstico do NAS/OLT concentrando quedas Lost-Carrier nesta persona.",
+  padrao_uso_normal: "Nenhuma ação de rede necessária — quedas dentro do padrão esperado (Idle-Timeout/User-Request), não Lost-Carrier anômalo.",
+  problema_energia_rede_acesso: "Verificar energia/rede de acesso na área de maior concentração desta persona.",
+  retransmissao_acima_padrao: "Investigar perda de pacote na rede de acesso para a categoria/persona afetada.",
+  jitter_estimado_elevado: "Avaliar QoS para tráfego sensível a jitter (Gaming/VoIP) no horário de pico desta persona.",
+  congestionamento_wifi_cpe: "Campanha de diagnóstico de Wi-Fi/CPE para a persona — jitter pode ser doméstico, não da rede do ISP."
+};
+function bmRecommendedAction(exp){
+  var top = exp.bayes.top;
+  return (BM_CAUSE_ACTIONS[top.id] || ("Encaminhar à engenharia de rede para triagem de "+exp.fam.label+"."))
+    + " (Nível 1 semi-automático — mesmo padrão de encaminhamento já usado no Painel de Alertas.)";
+}
+/* ── Narrativa em linguagem natural (dimensão 7) — usada tanto no card do
+   Painel de Alertas quanto na resposta do Assistente (explainAlertAnswer),
+   citando o método real (Bayes/Markov por persona), não mais "heurística
+   de score". ── */
+function bmAlertNarrative(alert, exp){
+  var p = exp.primary, mk = exp.markov;
+  var trendTxt;
+  if(mk.stateNow==="critico"){
+    trendTxt = "já está em Crítico — "+Math.round(mk.pStay*100)+"% de chance de permanecer assim e "+Math.round(mk.pImprove*100)+"% de melhorar (cadeia de Markov) nas próximas "+mk.periodsAhead+" semanas";
+  } else {
+    trendTxt = Math.round(mk.pWorse*100)+"% de chance de piorar a partir de "+BM_STATE_LABEL[mk.stateNow]+" (cadeia de Markov) nas próximas "+mk.periodsAhead+" semanas";
+  }
+  return "Entre as 8 personas comportamentais (K-Means++, k=8), \""+p.label+"\" é a mais exposta a "+exp.fam.label+" hoje (estado "+BM_STATE_LABEL[p.stateNow]+", "+fmtN(p.nSubs)+" assinante(s)). "
+    +"Causa mais provável, pela rede Bayesiana: \""+exp.bayes.top.label+"\" ("+Math.round(exp.bayes.top.prob*100)+"% de probabilidade posterior). "
+    +"Tendência: "+trendTxt+". Prioridade "+exp.score+"/100 (gravidade "+exp.gravidade+" × impacto "+exp.impacto+"). "
+    +"Cálculo real por persona (segmento), não por assinante individual — ver Assistente, \"Como é calculada a causa provável e a tendência de um alerta\".";
+}
 
 
 /* ═══ ESTADO GLOBAL ═══════════════════════════════════════════════════════
@@ -4319,7 +4375,7 @@ function renderAlerts(){
   var nOcultos=filtrados.filter(function(a){return _alertStatusOf(a.id)==="resolvido";}).length;
   var visiveis=_alertState.ocultarResolvidos?filtrados.filter(function(a){return _alertStatusOf(a.id)!=="resolvido";}):filtrados;
 
-  var html='<div style="font-size:11px;color:#567898;margin-bottom:10px;max-width:820px;">&#9888; Painel de Alertas &#8212; qualidade (IQRE/OLT/FCAPS) e mudan&#231;a de comportamento (Sigma Topol&#243;gico). Severidade e causa prov&#225;vel s&#227;o heur&#237;sticas de score sobre indicadores j&#225; calculados no pipeline, n&#227;o um modelo Bayesiano/Markov real.</div>';
+  var html='<div style="font-size:11px;color:#567898;margin-bottom:10px;max-width:900px;">&#9888; Painel de Alertas &#8212; qualidade (IQRE/OLT/FCAPS) e mudan&#231;a de comportamento (Sigma Topol&#243;gico). Causa prov&#225;vel (rede Bayesiana) e tend&#234;ncia (cadeia de Markov) s&#227;o calculadas de verdade, client-side, <b>por persona</b> (as 8 personas K-Means++ j&#225; existentes) &#8212; n&#227;o por assinante individual. Ver Assistente, &#8220;Como &#233; calculada a causa prov&#225;vel e a tend&#234;ncia de um alerta&#8221;.</div>';
 
   html+='<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">';
   [["critico","Crítico"],["excecao","Exceção"],["atencao","Atenção"],["normal","Normal"]].forEach(function(pair){
@@ -4355,28 +4411,93 @@ function renderAlerts(){
   visiveis.forEach(function(a){
     var isOpen=_alertState.open===a.id, c=_sevColor(a.severidade), st=_alertStatusOf(a.id);
     var stLbl=(_ALERT_STATUS_OPTS.filter(function(s){return s.id===st;})[0]||{}).label||st;
-    var topCausa=a.causas&&a.causas[0];
+    var exp=bmExplainAlert(a);
+    var topCausaLabel=exp?exp.bayes.top.label:(a.causas&&a.causas[0]&&a.causas[0][0]);
+    var topCausaPct=exp?Math.round(exp.bayes.top.prob*100):(a.causas&&a.causas[0]&&Math.round(a.causas[0][1]*100));
     html+='<div style="background:#0C1829;border:1px solid #1A3050;border-radius:8px;margin-bottom:8px;overflow:hidden;">';
     html+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;cursor:pointer;" onclick="_alertToggleOpen(\''+a.id+'\')">';
     html+='<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
       +'<span style="font-size:9px;text-transform:uppercase;color:#567898;background:#07101C;border:1px solid #1A3050;border-radius:10px;padding:2px 8px;flex-shrink:0;">'+a.camada+'</span>'
       +'<div style="min-width:0;"><div style="font-size:13px;color:#F0F8FF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+a.objeto+' &middot; '+a.indicador+'</div>'
-      +'<div style="font-size:10px;color:#567898;font-family:monospace;">'+a.id+(topCausa?(' &middot; causa prov&#225;vel: '+topCausa[0]+' ('+Math.round(topCausa[1]*100)+'%)'):'')+'</div></div></div>';
+      +'<div style="font-size:10px;color:#567898;font-family:monospace;">'+a.id+(topCausaLabel?(' &middot; causa prov&#225;vel'+(exp?' ('+exp.primary.label+')':'')+': '+topCausaLabel+' ('+topCausaPct+'%)'):'')+'</div></div></div>';
     html+='<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">'
       +'<span style="font-size:10px;color:#8ABEDF;background:#07101C;border:1px solid #2A4A6F;border-radius:10px;padding:2px 8px;">'+stLbl+'</span>'
       +'<span style="font-size:10px;font-weight:700;color:'+c+';background:'+c+'1A;border:1px solid '+c+'55;border-radius:10px;padding:2px 8px;">'+_sevLabel(a.severidade)+'</span>'
       +'<span style="color:#567898;display:inline-block;transition:transform .15s;transform:'+(isOpen?"rotate(90deg)":"none")+';">&#10148;</span></div></div>';
     if(isOpen){
       html+='<div style="border-top:1px solid #1A3050;padding:12px 14px;">';
-      html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">';
-      html+='<div><div style="font-size:10px;color:#567898;text-transform:uppercase;margin-bottom:6px;">Score de causa prov&#225;vel</div>';
-      (a.causas||[]).forEach(function(cz){
-        html+='<div style="margin-bottom:6px;"><div style="display:flex;justify-content:space-between;font-size:11px;color:#8ABEDF;"><span>'+cz[0]+'</span><span>'+Math.round(cz[1]*100)+'%</span></div>'
-          +'<div style="height:5px;background:#07101C;border-radius:3px;overflow:hidden;margin-top:2px;"><div style="height:100%;width:'+Math.round(cz[1]*100)+'%;background:'+c+';"></div></div></div>';
-      });
-      html+='</div><div><div style="font-size:10px;color:#567898;text-transform:uppercase;margin-bottom:6px;">Tend&#234;ncia</div>';
-      if(a.tendencia){ html+='<div style="font-size:16px;font-weight:700;color:'+c+';">'+a.tendencia.texto+'</div>'; }
-      html+='<div style="margin-top:8px;background:#07101C;border-radius:6px;padding:8px 10px;font-size:11px;color:#8ABEDF;">'+a.nota+'</div></div></div>';
+      if(!exp){
+        /* Defensivo: só ocorre se algum indicador novo em RAW.alerts_isp ainda
+           não tiver família mapeada em BM_INDICATOR_TO_FAMILY — mantém a
+           exibição antiga (heurística) em vez de quebrar a tela. */
+        html+='<div style="font-size:11px;color:#E87000;margin-bottom:8px;">Indicador ainda não migrado para o cálculo real por persona — exibindo heurística legada.</div>';
+        html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">';
+        html+='<div><div style="font-size:10px;color:#567898;text-transform:uppercase;margin-bottom:6px;">Score de causa prov&#225;vel (heur&#237;stica legada)</div>';
+        (a.causas||[]).forEach(function(cz){
+          html+='<div style="margin-bottom:6px;"><div style="display:flex;justify-content:space-between;font-size:11px;color:#8ABEDF;"><span>'+cz[0]+'</span><span>'+Math.round(cz[1]*100)+'%</span></div>'
+            +'<div style="height:5px;background:#07101C;border-radius:3px;overflow:hidden;margin-top:2px;"><div style="height:100%;width:'+Math.round(cz[1]*100)+'%;background:'+c+';"></div></div></div>';
+        });
+        html+='</div><div><div style="font-size:10px;color:#567898;text-transform:uppercase;margin-bottom:6px;">Tend&#234;ncia (heur&#237;stica legada)</div>';
+        if(a.tendencia){ html+='<div style="font-size:16px;font-weight:700;color:'+c+';">'+a.tendencia.texto+'</div>'; }
+        html+='<div style="margin-top:8px;background:#07101C;border-radius:6px;padding:8px 10px;font-size:11px;color:#8ABEDF;">'+a.nota+'</div></div></div>';
+      } else {
+        var mk=exp.markov, by=exp.bayes, p=exp.primary;
+        html+='<div class="bm-sec-title" style="font-size:10px;color:#E87000;text-transform:uppercase;font-weight:700;margin:10px 0 4px;">1. O qu&#234;</div>';
+        html+='<div style="font-size:12.5px;color:#D0E8FF;">'+a.objeto+' ('+a.indicador+'): valor atual '+a.valor+a.unidade+', estado <b style="color:'+c+';">'+_sevLabel(a.severidade)+'</b>. '
+          +'Persona mais exposta a este indicador: <b>'+p.label+'</b> ('+BM_STATE_LABEL[p.stateNow]+', '+fmtN(p.nSubs)+' assinante(s))'
+          +(exp.outlier.isOutlierNow?' — padr&#227;o estatisticamente at&#237;pico (outlier MAD, |z|='+Math.abs(exp.outlier.lastZ).toFixed(1)+'), n&#227;o apenas cruzamento de limiar':'')+'.</div>';
+
+        html+='<div class="bm-sec-title" style="font-size:10px;color:#E87000;text-transform:uppercase;font-weight:700;margin:12px 0 4px;">2. Por qu&#234; (causa prov&#225;vel &#8212; rede Bayesiana, persona '+p.label+')</div>';
+        by.posterior.forEach(function(cz){
+          html+='<div style="margin-bottom:5px;"><div style="display:flex;justify-content:space-between;font-size:11px;color:#8ABEDF;"><span>'+cz.label+'</span><span>'+Math.round(cz.prob*100)+'%</span></div>'
+            +'<div style="height:5px;background:#07101C;border-radius:3px;overflow:hidden;margin-top:2px;"><div style="height:100%;width:'+Math.round(cz.prob*100)+'%;background:'+c+';"></div></div></div>';
+        });
+        html+='<div style="font-size:10.5px;color:#567898;margin-top:4px;">Evid&#234;ncias a favor: '+(Object.keys(by.evidence).filter(function(k){return by.evidence[k];}).join(", ")||"nenhuma")+'. Evid&#234;ncias descartadas: '+(Object.keys(by.evidence).filter(function(k){return !by.evidence[k];}).join(", ")||"nenhuma")+'.</div>';
+
+        html+='<div class="bm-sec-title" style="font-size:10px;color:#E87000;text-transform:uppercase;font-weight:700;margin:12px 0 4px;">3. Para onde (tend&#234;ncia &#8212; cadeia de Markov)</div>';
+        if(mk.stateNow==="critico"){
+          html+='<div style="font-size:12.5px;color:#D0E8FF;">J&#225; em Cr&#237;tico. P(permanecer) = <b style="color:'+c+';">'+Math.round(mk.pStay*100)+'%</b> &middot; P(melhorar em '+mk.periodsAhead+' semanas) = <b style="color:#2ECC71;">'+Math.round(mk.pImprove*100)+'%</b>.</div>';
+        } else {
+          html+='<div style="font-size:12.5px;color:#D0E8FF;">P(piorar em '+mk.periodsAhead+' semanas | '+BM_STATE_LABEL[mk.stateNow]+' agora) = <b style="color:'+c+';">'+Math.round(mk.pWorse*100)+'%</b>.</div>';
+        }
+        html+='<div style="display:flex;margin-top:6px;gap:4px;">';
+        BM_STATE_ORDER.forEach(function(s,i){
+          html+='<div style="flex:1;text-align:center;background:#07101C;border-radius:4px;padding:4px 2px;font-size:11px;font-weight:700;color:'+BM_STATE_COLOR[s]+';">'+Math.round(mk.dist[i]*100)+'%<br><span style="color:#567898;font-size:8px;font-weight:400;">'+BM_STATE_LABEL[s]+'</span></div>';
+        });
+        html+='</div>';
+        html+='<div style="font-size:9.5px;color:#3A6080;margin-top:6px;">Matriz de transi&#231;&#227;o estimada por contagem real das transi&#231;&#245;es semana-a-semana observadas na s&#233;rie sint&#233;tica de '+p.label+' ('+(RAW.persona_indicator_series.n_periods)+' per&#237;odos, suaviza&#231;&#227;o de Laplace).</div>';
+        if(exp.projection.hasProjection){
+          html+='<div style="font-size:11px;color:#8ABEDF;margin-top:6px;">Proje&#231;&#227;o por regress&#227;o linear: cruza o limiar de '+BM_STATE_LABEL[exp.projection.nextState]+' em cerca de '+Math.round(exp.projection.periodsFromNow)+' semana(s) (IC 95%: '+Math.round(exp.projection.periodsFromNowLow)+' &#8211; '+Math.round(exp.projection.periodsFromNowHigh)+') &middot; R&#178;='+exp.projection.reg.r2.toFixed(2)+'.</div>';
+        } else {
+          html+='<div style="font-size:11px;color:#567898;margin-top:6px;">'+exp.projection.reason+'</div>';
+        }
+
+        html+='<div class="bm-sec-title" style="font-size:10px;color:#E87000;text-transform:uppercase;font-weight:700;margin:12px 0 4px;">4. Quem &#233; afetado (por persona &#8212; nunca assinante individual)</div>';
+        html+='<div style="font-size:11px;color:#8ABEDF;overflow-x:auto;">';
+        html+='<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="color:#567898;text-align:left;"><th style="padding:2px 6px 4px 0;">Persona</th><th style="padding:2px 6px 4px 0;">Estado</th><th style="padding:2px 0 4px;text-align:right;">Assinantes</th></tr></thead><tbody>';
+        exp.ranking.forEach(function(r){
+          var rc=BM_STATE_COLOR[r.stateNow];
+          html+='<tr'+(r.personaKey===p.personaKey?' style="font-weight:700;"':'')+'><td style="padding:2px 6px 2px 0;color:#D0E8FF;">'+r.label+'</td>'
+            +'<td style="padding:2px 6px 2px 0;color:'+rc+';">'+(r.trendUi==="Recuperado"?"Recuperado":BM_STATE_LABEL[r.stateNow])+'</td>'
+            +'<td style="padding:2px 0;text-align:right;color:#D0E8FF;">'+fmtN(r.nSubs)+'</td></tr>';
+        });
+        html+='</tbody></table></div>';
+
+        html+='<div class="bm-sec-title" style="font-size:10px;color:#E87000;text-transform:uppercase;font-weight:700;margin:12px 0 4px;">5. Por que essa prioridade</div>';
+        html+='<div style="display:flex;gap:16px;flex-wrap:wrap;">';
+        html+='<div style="flex:1;min-width:140px;"><div style="font-size:11px;color:#8ABEDF;display:flex;justify-content:space-between;"><span>Gravidade t&#233;cnica</span><span>'+exp.gravidade+'/100</span></div><div style="height:5px;background:#07101C;border-radius:3px;overflow:hidden;margin-top:2px;"><div style="height:100%;width:'+exp.gravidade+'%;background:#E84040;"></div></div><div style="font-size:9.5px;color:#3A6080;margin-top:2px;">estado(40%) + Markov P(piorar)(30%) + outlier MAD(30%)</div></div>';
+        html+='<div style="flex:1;min-width:140px;"><div style="font-size:11px;color:#8ABEDF;display:flex;justify-content:space-between;"><span>Impacto de neg&#243;cio</span><span>'+exp.impacto+'/100</span></div><div style="height:5px;background:#07101C;border-radius:3px;overflow:hidden;margin-top:2px;"><div style="height:100%;width:'+exp.impacto+'%;background:#60C0FF;"></div></div><div style="font-size:9.5px;color:#3A6080;margin-top:2px;">assinantes da persona mais exposta / base total</div></div>';
+        html+='</div>';
+        html+='<div style="margin-top:6px;font-size:11px;color:#8ABEDF;">Score combinado = 0,5&times;gravidade + 0,5&times;impacto = <b style="color:'+c+';">'+exp.score+'</b>.</div>';
+
+        html+='<div class="bm-sec-title" style="font-size:10px;color:#E87000;text-transform:uppercase;font-weight:700;margin:12px 0 4px;">6. O que fazer</div>';
+        html+='<div style="font-size:12.5px;color:#D0E8FF;">'+bmRecommendedAction(exp)+'</div>';
+
+        html+='<div class="bm-sec-title" style="font-size:10px;color:#E87000;text-transform:uppercase;font-weight:700;margin:12px 0 4px;">7. Narrativa (Assistente)</div>';
+        html+='<div style="background:#07101C;border-radius:6px;padding:10px 12px;font-size:12.5px;color:#8ABEDF;line-height:1.7;">'+bmAlertNarrative(a,exp)+'</div>';
+
+        html+='<div style="margin-top:8px;background:#07101C;border-radius:6px;padding:8px 10px;font-size:11px;color:#567898;">'+a.nota+'</div>';
+      }
       html+='<div style="margin-top:12px;"><div style="font-size:10px;color:#567898;text-transform:uppercase;margin-bottom:6px;">Status de tratamento</div><div style="display:flex;gap:6px;flex-wrap:wrap;">';
       _ALERT_STATUS_OPTS.forEach(function(s){
         var active=st===s.id;
@@ -4634,17 +4755,25 @@ function montarRespostaAssist(intent,docs,dadoVivo){
 function _alertShareText(alertId){
   var a=(RAW.alerts_isp||[]).filter(function(x){return x.id===alertId;})[0];
   if(!a) return null;
-  var causaTxt=(a.causas||[]).map(function(cz){return "- "+cz[0]+" ("+Math.round(cz[1]*100)+"%)";}).join("\n");
+  var exp=bmExplainAlert(a);
   var linhas=[
     "⚠ Alerta JourneyGraph ISP — "+_sevLabel(a.severidade),
     "",
     "Objeto: "+a.objeto+" ("+a.indicador+")",
     "Valor atual: "+a.valor+a.unidade+"  ["+a.id+"]",
     "",
-    "Causa(s) mais provável(is):",
-    causaTxt,
   ];
-  if(a.tendencia) linhas.push("", "Tendência: "+a.tendencia.texto);
+  if(exp){
+    linhas.push("Persona mais exposta: "+exp.primary.label+" ("+fmtN(exp.primary.nSubs)+" assinantes)");
+    linhas.push("Causa mais provável (rede Bayesiana): "+exp.bayes.top.label+" ("+Math.round(exp.bayes.top.prob*100)+"%)");
+    linhas.push("Tendência (Markov): "+(exp.markov.stateNow==="critico"
+      ? ("P(permanecer Crítico)="+Math.round(exp.markov.pStay*100)+"%")
+      : ("P(piorar em "+exp.markov.periodsAhead+" semanas)="+Math.round(exp.markov.pWorse*100)+"%")));
+  } else {
+    var causaTxt=(a.causas||[]).map(function(cz){return "- "+cz[0]+" ("+Math.round(cz[1]*100)+"%)";}).join("\n");
+    linhas.push("Causa(s) mais provável(is):", causaTxt);
+    if(a.tendencia) linhas.push("", "Tendência: "+a.tendencia.texto);
+  }
   linhas.push("", a.nota);
   return {assunto:"[JourneyGraph ISP] Alerta "+_sevLabel(a.severidade)+" — "+a.objeto, corpo:linhas.join("\n")};
 }
@@ -4662,12 +4791,28 @@ function explainAlertAnswer(alertId){
   var a=(RAW.alerts_isp||[]).filter(function(x){return x.id===alertId;})[0];
   if(!a) return null;
   var docs=searchAssistCorpus(a.indicador, ["indicador","metodologia"]);
-  var causaTxt=(a.causas||[]).map(function(cz){return cz[0]+" ("+Math.round(cz[1]*100)+"%)";}).join("; ");
-  var resposta="O objeto \""+a.objeto+"\" ("+a.indicador+") está em estado "+_sevLabel(a.severidade)+" — "
-    +"valor atual "+a.valor+a.unidade+" ("+a.id+"). Causa(s) mais provável(is): "+causaTxt+". "
-    +(a.tendencia?("Tendência: "+a.tendencia.texto+". "):"")+a.nota;
-  return {resposta:resposta, topico:_ASSIST_TOPICS.DADO_VIVO,
-    citacoes: docs.slice(0,1).map(function(d){return {titulo:d.titulo, secao:d.secao, corpus:d.corpus, fonte:d.fonte};})};
+  var exp=bmExplainAlert(a);
+  var citacoes=docs.slice(0,1).map(function(d){return {titulo:d.titulo, secao:d.secao, corpus:d.corpus, fonte:d.fonte};});
+  if(!exp){
+    var causaTxt=(a.causas||[]).map(function(cz){return cz[0]+" ("+Math.round(cz[1]*100)+"%)";}).join("; ");
+    var respostaLegada="O objeto \""+a.objeto+"\" ("+a.indicador+") está em estado "+_sevLabel(a.severidade)+" — "
+      +"valor atual "+a.valor+a.unidade+" ("+a.id+"). Causa(s) mais provável(is): "+causaTxt+". "
+      +(a.tendencia?("Tendência: "+a.tendencia.texto+". "):"")+a.nota;
+    return {resposta:respostaLegada, topico:_ASSIST_TOPICS.DADO_VIVO, citacoes:citacoes};
+  }
+  var mk=exp.markov, p=exp.primary;
+  var trendHtml = mk.stateNow==="critico"
+    ? ("já está em Crítico — "+Math.round(mk.pStay*100)+"% de chance de permanecer e "+Math.round(mk.pImprove*100)+"% de melhorar em "+mk.periodsAhead+" semanas")
+    : (Math.round(mk.pWorse*100)+"% de chance de piorar de "+BM_STATE_LABEL[mk.stateNow]+" em "+mk.periodsAhead+" semanas");
+  var resposta="<b>"+a.objeto+"</b> ("+a.indicador+") — "+_sevLabel(a.severidade)+" (score "+exp.score+"/100)<br><br>"
+    +"<b>1. O quê:</b> valor atual "+a.valor+a.unidade+". Persona mais exposta: "+p.label+" ("+BM_STATE_LABEL[p.stateNow]+", "+fmtN(p.nSubs)+" assinantes).<br>"
+    +"<b>2. Por quê:</b> causa mais provável "+exp.bayes.top.label+" ("+Math.round(exp.bayes.top.prob*100)+"% de probabilidade posterior, rede Bayesiana).<br>"
+    +"<b>3. Tendência:</b> "+trendHtml+" (cadeia de Markov).<br>"
+    +"<b>4. Afetados:</b> "+fmtN(p.nSubs)+" assinante(s) na persona "+p.label+" — nunca assinante individual (ver Consulta Individual restrita para isso).<br>"
+    +"<b>5. Prioridade:</b> gravidade "+exp.gravidade+"/100 × impacto "+exp.impacto+"/100.<br>"
+    +"<b>6. Ação:</b> "+bmRecommendedAction(exp)+"<br>"
+    +"<b>7. Narrativa:</b> "+bmAlertNarrative(a,exp);
+  return {resposta:resposta, topico:_ASSIST_TOPICS.DADO_VIVO, citacoes:citacoes};
 }
 function explainAlert(alertId){
   /* A caixa do Assistente agora fica embutida na própria aba Alertas
