@@ -19,8 +19,22 @@ body{font-family:Arial,sans-serif;background:#09111E;color:#E0EAF5;height:100vh;
 .brand-accent{color:#E87000;}
 .brand-sub{font-size:11px;color:#8ABEDF;margin-top:1px;}
 #topbar-logo img{height:36px;width:auto;filter:brightness(0) invert(1);}
-#nav-tabs{display:flex;gap:3px;background:#050C16;padding:3px;border-radius:8px;}
+/* overflow-x:auto + max-width:100% aqui (não só numa media query) evita
+   que a barra de abas, ao não caber no espaço que o flex pai (#topbar)
+   lhe dá, pinte por cima dos elementos vizinhos (Lounge, Fundo Claro,
+   Carregar Dados) — comportamento padrão de flex item que não encolhe
+   abaixo do conteúdo mínimo. Com isso ela ganha scroll horizontal próprio
+   em qualquer largura, em vez de depender de um breakpoint específico. */
+#nav-tabs{display:flex;gap:3px;background:#050C16;padding:3px;border-radius:8px;overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
 .nav-btn{background:transparent;border:none;color:#8ABEDF;font-size:13px;font-weight:600;padding:5px 18px;border-radius:6px;cursor:pointer;font-family:Arial,sans-serif;transition:all .15s;white-space:nowrap;}
+.nav-btn[data-screen]{flex-shrink:0;}
+
+/* Tela de Alertas: lista + assistente lado a lado. Vira coluna única
+   abaixo de 900px (ver media query) — sem isso, min-width:300px do
+   assistente força overflow horizontal da página inteira em celular. */
+.alerts-layout{display:flex;gap:16px;align-items:flex-start;}
+.alerts-col-main{flex:1.4;min-width:0;}
+.alerts-col-side{flex:1;min-width:300px;max-width:400px;position:sticky;top:0;height:calc(100vh - 150px);display:flex;flex-direction:column;background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:12px;flex-shrink:0;}
 .nav-btn:hover{background:#0D1829;color:#E0F4FF;}
 .nav-btn.active{background:#E87000;color:#fff;}
 
@@ -79,7 +93,9 @@ body{font-family:Arial,sans-serif;background:#09111E;color:#E0EAF5;height:100vh;
 
 /* Dígrafo */
 #screen-graph{overflow:hidden;}
-#graph-svg{width:100%;height:100%;}
+/* touch-action:none evita que arrastar um nó em touchscreen seja
+   interpretado como rolar/dar zoom na página pelo navegador. */
+#graph-svg{width:100%;height:100%;touch-action:none;}
 .tooltip{position:absolute;pointer-events:none;background:#0C1829;border:1px solid #1E3A5F;border-radius:6px;padding:7px 11px;font-size:13px;color:#E8F4FF;max-width:220px;display:none;z-index:10;}
 .eib-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:13px;}
 .eib-arrow{color:#E87000;font-size:16px;font-weight:700;}
@@ -406,8 +422,6 @@ body.chrome-light #topbar-logo img { filter:none !important; }
   .sidebar-toggle-btn{display:inline-flex !important;align-items:center;justify-content:center;background:#0E1F2E;border:1px solid #2A4A6F;color:#8ABEDF;font-size:16px;padding:5px 10px;border-radius:6px;cursor:pointer;}
   .brand-sub{display:none;}
   #topbar{position:relative;z-index:600;flex-wrap:wrap;row-gap:6px;}
-  #nav-tabs{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;scrollbar-width:thin;}
-  .nav-btn[data-screen]{flex-shrink:0;}
 
   #left-col, #cat-sidebar{
     position:fixed; top:0; bottom:0; width:260px; z-index:500;
@@ -424,6 +438,9 @@ body.chrome-light #topbar-logo img { filter:none !important; }
   #metrics{grid-template-columns:repeat(2,1fr);}
   .charts-grid, .insights-grid, .qual-grid{grid-template-columns:1fr !important;}
   .health-grid{grid-template-columns:1fr !important;}
+
+  .alerts-layout{flex-direction:column;}
+  .alerts-col-side{min-width:0;max-width:100%;width:100%;position:relative;top:auto;height:auto;max-height:70vh;}
 }
 
 @media(max-width:480px){
@@ -628,9 +645,9 @@ body.chrome-light #topbar-logo img { filter:none !important; }
 
     <!-- TELA 7: ALERTAS (fork exploratório) -->
     <div class="screen" id="screen-alerts" style="padding:16px;overflow-y:auto;">
-      <div style="display:flex;gap:16px;align-items:flex-start;">
-        <div id="alerts-content" style="flex:1.4;min-width:0;"></div>
-        <div id="alerts-assist-box" style="flex:1;min-width:300px;max-width:400px;position:sticky;top:0;height:calc(100vh - 150px);display:flex;flex-direction:column;background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:12px;flex-shrink:0;"></div>
+      <div class="alerts-layout">
+        <div id="alerts-content" class="alerts-col-main"></div>
+        <div id="alerts-assist-box" class="alerts-col-side"></div>
       </div>
     </div>
 
@@ -4620,24 +4637,24 @@ function renderRestricted(){
     html += '<div class="rst-profile"><div style="font-size:12px;font-weight:700;color:#8ABEDF;margin-bottom:2px;">Dígrafo individual — peso do nó = tempo na categoria</div>';
     html += '<div style="font-size:10.5px;color:#3A6080;margin-bottom:8px;">Sequência de navegação sintética reconstruída a partir do uso por categoria acima (tamanho do nó = minutos estimados na categoria; espessura da aresta = nº de transições observadas). Arraste um nó para fixá-lo sem mover os demais; clique (sem arrastar) para fixar/soltar; clique mostra detalhes do nó.</div>';
     html += '<div style="position:relative;">';
-    html += '<svg id="rst-digraph-svg" style="width:100%;height:320px;background:#060E18;border-radius:8px;border:1px solid #0F1E30;"></svg>';
+    html += '<svg id="rst-digraph-svg" style="width:100%;height:320px;background:#060E18;border-radius:8px;border:1px solid #0F1E30;touch-action:none;"></svg>';
     html += '<div class="tooltip" id="rst-digraph-tooltip"></div>';
     html += '<div id="rst-digraph-info" style="display:none;position:absolute;top:10px;right:10px;background:#06101C;border:1px solid #E87000;border-radius:8px;padding:10px 14px;min-width:190px;max-width:260px;box-shadow:0 4px 16px rgba(0,0,0,.6);"></div>';
     html += '</div></div>';
 
     html += '<div class="rst-profile"><div style="font-size:12px;font-weight:700;color:#8ABEDF;margin-bottom:8px;">Sessões RADIUS recentes (amostra)</div>';
-    html += '<table class="rst-audit-table"><tr><th>Data</th><th>Duração</th><th>Acct-Terminate-Cause</th></tr>';
+    html += '<div style="overflow-x:auto;"><table class="rst-audit-table"><tr><th>Data</th><th>Duração</th><th>Acct-Terminate-Cause</th></tr>';
     pf.sessoes.forEach(function(s){
       html += '<tr><td>'+s.data+'</td><td>'+s.duracao+' min</td><td>'+s.causa+(s.causa==="Lost-Carrier"?' &#9888;':'')+'</td></tr>';
     });
-    html += '</table></div>';
+    html += '</table></div></div>';
   }
   html += '<div class="rst-profile"><div style="font-size:12px;font-weight:700;color:#8ABEDF;margin-bottom:8px;">Trilha de auditoria desta sessão ('+S.restrictedAudit.length+' evento'+(S.restrictedAudit.length===1?'':'s')+')</div>';
-  html += '<table class="rst-audit-table"><tr><th>Quando</th><th>Ação</th><th>Assinante</th><th>Motivo</th><th>Protocolo</th></tr>';
+  html += '<div style="overflow-x:auto;"><table class="rst-audit-table"><tr><th>Quando</th><th>Ação</th><th>Assinante</th><th>Motivo</th><th>Protocolo</th></tr>';
   S.restrictedAudit.slice().reverse().forEach(function(a){
     html += '<tr><td>'+a.ts+'</td><td>'+a.acao+'</td><td>'+a.subId+'</td><td>'+a.motivo+'</td><td>'+a.protocolo+'</td></tr>';
   });
-  html += '</table>';
+  html += '</table></div>';
   html += '<div style="font-size:10px;color:#3A6080;margin-top:8px;">Registro mantido apenas em memória desta sessão do navegador — perdido ao recarregar a página. Em produção deve ser persistido em log server-side imutável, com autenticação real (não senha client-side) e MFA (ver Tech Reference, Anexo E).</div>';
   html += '</div>';
   el.innerHTML = html;
@@ -4946,7 +4963,10 @@ document.addEventListener("click",function(ev){
   b.classList.add("active"); S.gran=b.dataset.gran; renderCharts();
 });
 
-window.addEventListener("resize",function(){if(S.screen==="graph")renderGraph();});
+window.addEventListener("resize",function(){
+  if(S.screen==="graph")renderGraph();
+  else if(S.screen==="restricted"&&S.restrictedCurrent)rstDrawDigraph(S.restrictedCurrent);
+});
 
 /* INIT */
 buildGeoSidebar();
