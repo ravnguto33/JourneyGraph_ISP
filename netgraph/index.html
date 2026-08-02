@@ -1844,6 +1844,238 @@ function _assistSendFrom(idPrefix){
   renderAssistant();
   renderAlertsAssistant();
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   §7.4 CONSULTA INDIVIDUAL DE ELEMENTO DE REDE (modo restrito) — análoga
+   direta à "Consulta Individual de Assinante" do JourneyGraph: senha
+   ilustrativa (não é controle de acesso de produção), log de auditoria
+   imutável, e só disponível quando a consulta precisa descer até o nível
+   de ONT/assinante específico. Três hipóteses de uso, iguais ao
+   JourneyGraph: interceptação legal, apuração de Ouvidoria, SLA de NOC.
+   ════════════════════════════════════════════════════════════════════════ */
+var RST_PASSWORD = "auditoria2026";
+var S_restricted = {authed:false, motivo:null, protocolo:null, audit:[], current:null};
+var ALL_CTO_IDS = Object.keys(NODES).filter(function(id){ return NODES[id].type==="cto"; });
+
+function rstGateOpen(){
+  document.getElementById("rst-motivo").value="";
+  document.getElementById("rst-protocolo").value="";
+  document.getElementById("rst-senha").value="";
+  document.getElementById("rst-err").style.display="none";
+  document.getElementById("restricted-overlay").style.display="flex";
+  document.getElementById("rst-motivo").focus();
+}
+function rstGateClose(){ document.getElementById("restricted-overlay").style.display="none"; }
+function rstAuthenticate(){
+  var motivo=document.getElementById("rst-motivo").value;
+  var protocolo=document.getElementById("rst-protocolo").value.trim();
+  var senha=document.getElementById("rst-senha").value;
+  var err=document.getElementById("rst-err");
+  var msg = !motivo ? "Selecione o motivo do acesso."
+    : !protocolo ? "Informe o protocolo/referência do acesso."
+    : senha!==RST_PASSWORD ? "Senha incorreta."
+    : null;
+  if(msg){ err.textContent=msg; err.style.display="block"; return; }
+  S_restricted.authed=true;
+  S_restricted.motivo=motivo;
+  S_restricted.protocolo=protocolo;
+  S_restricted.audit.push({ts:new Date().toLocaleString("pt-BR"), motivo:motivo, protocolo:protocolo, elemento:"—", acao:"Login no modo restrito"});
+  rstGateClose();
+  renderRestricted();
+}
+function rstLogout(){
+  S_restricted.authed=false; S_restricted.motivo=null; S_restricted.protocolo=null; S_restricted.current=null;
+  document.querySelector('.nav-btn[data-screen="topology"]').click();
+}
+
+/* Hash determinística de string → CTO existente + índice de porta/ONT —
+   mesmo princípio do JourneyGraph (mulberry32 semeada pelo ID buscado):
+   o mesmo texto de busca sempre resolve ao mesmo CTO/ONT sintético,
+   sem precisar embutir uma tabela de milhares de ONTs no arquivo. */
+function rstResolveQuery(raw){
+  raw=(raw||"").trim();
+  if(!raw) return null;
+  var rnd=seedRng("rst-"+raw.toUpperCase());
+  if(NODES[raw] && NODES[raw].type==="cto"){
+    var cto=NODES[raw];
+    return {ctoId:raw, ontIndex:1+Math.floor(rnd()*cto.subscribers)};
+  }
+  var ctoId = ALL_CTO_IDS[Math.floor(rnd()*ALL_CTO_IDS.length)];
+  var cto=NODES[ctoId];
+  return {ctoId:ctoId, ontIndex:1+Math.floor(rnd()*cto.subscribers)};
+}
+var RST_CAUSAS_DIST=[{causa:"User-Request",pct:68},{causa:"Lost-Carrier (ONT)",pct:16},{causa:"Power-Failure (CPE)",pct:8},{causa:"Signal-Degradation",pct:5},{causa:"Admin-Reset",pct:3}];
+function rstWeightedPick(rnd, items, weightFn){
+  var total=0; items.forEach(function(it){total+=weightFn(it)||0;});
+  var r=rnd()*total, acc=0;
+  for(var i=0;i<items.length;i++){ acc+=weightFn(items[i])||0; if(r<=acc) return items[i]; }
+  return items[items.length-1];
+}
+function rstGenProfile(query){
+  var resolved=rstResolveQuery(query);
+  if(!resolved) return null;
+  var cto=NODES[resolved.ctoId];
+  var pon=NODES[PARENT[resolved.ctoId]];
+  var olt=NODES[PARENT[pon.id]];
+  var pop=NODES[PARENT[olt.id]];
+  var coreEdge = EDGES.find(function(e){ return e.target===pop.id; });
+  var core=NODES[coreEdge.source];
+  var rnd=seedRng("rst-profile-"+resolved.ctoId+"-"+resolved.ontIndex);
+  var isCorporate = cto.corporate && resolved.ontIndex===1;
+  var ontId = "ONT"+String(resolved.ontIndex).padStart(3,"0")+"-"+resolved.ctoId.toUpperCase();
+  var online = cto.health!=="falha" || rnd()>0.5;
+  var rxPower = online ? -(randRange(rnd,14,26)).toFixed(1) : -(randRange(rnd,28,32)).toFixed(1);
+  var sessoes=[];
+  for(var i=0;i<5;i++){
+    var causa=rstWeightedPick(rnd, RST_CAUSAS_DIST, function(c){return c.pct;}).causa;
+    var diasAtras=Math.floor(rnd()*10)+1;
+    var d=new Date(NOW_TS); d.setDate(d.getDate()-diasAtras);
+    sessoes.push({data:d.toLocaleDateString("pt-BR"), duracao:Math.round(20+rnd()*600), causa:causa});
+  }
+  return {
+    query:query, ontId:ontId, ctoId:cto.id, cto:cto, pon:pon, olt:olt, pop:pop, core:core,
+    corporate:isCorporate, online:online, rxPower:Number(rxPower), plano: isCorporate?"Corporativo — SLA diferenciado":pick(["Residencial 300 Mbps","Residencial 500 Mbps","Residencial 1 Gbps"],rnd),
+    zona:(ZONES.find(function(z){return z.id===cto.zone;})||{}).label, sessoes:sessoes
+  };
+}
+function rstSearch(){
+  var inputEl=document.getElementById("rst-search-input");
+  var q=inputEl?inputEl.value.trim():"";
+  if(!q) return;
+  S_restricted.current=rstGenProfile(q);
+  S_restricted.audit.push({ts:new Date().toLocaleString("pt-BR"), motivo:S_restricted.motivo, protocolo:S_restricted.protocolo, elemento:S_restricted.current.ontId, acao:"Consulta de elemento/ONT individual"});
+  renderRestricted();
+}
+function rstRandom(){
+  var ctoId=pick(ALL_CTO_IDS, Math.random); /* aleatoriedade real aqui é intencional (botão "Aleatório") */
+  var idx=1+Math.floor(Math.random()*NODES[ctoId].subscribers);
+  var q=ctoId+"#"+idx;
+  var inputEl=document.getElementById("rst-search-input");
+  if(inputEl) inputEl.value=q;
+  S_restricted.current=rstGenProfile(ctoId);
+  S_restricted.audit.push({ts:new Date().toLocaleString("pt-BR"), motivo:S_restricted.motivo, protocolo:S_restricted.protocolo, elemento:S_restricted.current.ontId, acao:"Consulta de elemento/ONT individual (aleatória)"});
+  renderRestricted();
+}
+function renderRestricted(){
+  var el=document.getElementById("restricted-content");
+  if(!el) return;
+  if(!S_restricted.authed){
+    el.innerHTML='<div style="font-size:12px;color:#567898;">Autenticação necessária para acessar esta tela. <a href="#" onclick="rstGateOpen();return false;" style="color:#E87000;">Autenticar</a></div>';
+    return;
+  }
+  var html='<div class="rst-banner">&#9888; Modo restrito ativo — motivo: <b>'+S_restricted.motivo+'</b> &middot; protocolo: <b>'+S_restricted.protocolo+'</b> &middot; <a href="#" onclick="rstLogout();return false;">Sair do modo restrito</a></div>';
+  html+='<div class="rst-search"><input type="text" id="rst-search-input" placeholder="ID da CTO (ex.: cto-centro-0-p0-c0) ou qualquer texto identificador" value="'+(S_restricted.current?S_restricted.current.query:'')+'" onkeydown="if(event.key===\'Enter\')rstSearch();"><button onclick="rstSearch()">Buscar</button><button class="rst-random" onclick="rstRandom()">Aleatório</button></div>';
+
+  var pf=S_restricted.current;
+  if(pf){
+    html+='<div class="rst-profile">';
+    html+='<div style="font-size:15px;font-weight:700;color:#F0F8FF;margin-bottom:2px;">'+pf.ontId+(pf.corporate?'<span class="corp-badge">SLA</span>':'')+'</div>';
+    html+='<div style="font-size:11px;color:#567898;margin-bottom:10px;">Caminho: '+pf.core.label+' → '+pf.pop.label+' → '+pf.olt.label+' → '+pf.pon.label+' → '+pf.cto.label+'</div>';
+    function rrow(k,v){ return '<div class="rst-profile-row"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>'; }
+    html+=rrow("Status", pf.online?'<span style="color:#2ECC71;">Online</span>':'<span style="color:#FF4444;">Offline</span>');
+    html+=rrow("Plano/SLA", pf.plano);
+    html+=rrow("Zona", pf.zona);
+    html+=rrow("Potência óptica recebida (Rx)", pf.rxPower+" dBm");
+    html+=rrow("CTO", pf.ctoId+" ("+pf.cto.portsUsed+"/"+pf.cto.capacityPorts+" portas)");
+    html+=rrow("OLT", pf.olt.label+" — util. "+Math.round(pf.olt.util)+"%");
+    html+=rrow("Assinantes na mesma CTO", pf.cto.subscribers);
+    html+='</div>';
+
+    html+='<div style="background:#0C1829;border:1px solid #1A3050;border-radius:10px;padding:14px;margin-bottom:16px;">';
+    html+='<div style="font-size:11px;color:#8ABEDF;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Dígrafo do caminho (arraste para fixar, clique para detalhe)</div>';
+    html+='<svg id="rst-digraph-svg" style="width:100%;height:280px;background:#060E18;border-radius:8px;border:1px solid #0F1E30;touch-action:none;"></svg>';
+    html+='<div id="rst-node-info" style="font-size:11.5px;color:#8ABEDF;margin-top:8px;"></div>';
+    html+='</div>';
+
+    html+='<div style="background:#0C1829;border:1px solid #1A3050;border-radius:10px;padding:14px;margin-bottom:16px;">';
+    html+='<div style="font-size:11px;color:#8ABEDF;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Últimas 5 sessões (Acct-Terminate-Cause sintético)</div>';
+    html+='<div style="overflow-x:auto;"><table class="rst-audit-table"><tr><th>Data</th><th>Duração (s)</th><th>Causa</th></tr>';
+    pf.sessoes.forEach(function(s){ html+='<tr><td>'+s.data+'</td><td>'+s.duracao+'</td><td>'+s.causa+'</td></tr>'; });
+    html+='</table></div></div>';
+  } else {
+    html+='<div style="text-align:center;padding:20px;color:#3A6080;font-size:12px;background:#0C1829;border:1px solid #1A3050;border-radius:8px;margin-bottom:16px;">Nenhuma consulta feita ainda nesta sessão.</div>';
+  }
+
+  html+='<div style="font-size:11px;color:#8ABEDF;font-weight:700;text-transform:uppercase;margin:14px 0 8px;">Trilha de auditoria (imutável, nesta sessão)</div>';
+  html+='<div style="overflow-x:auto;"><table class="rst-audit-table"><tr><th>Quando</th><th>Ação</th><th>Elemento</th><th>Motivo</th><th>Protocolo</th></tr>';
+  S_restricted.audit.slice().reverse().forEach(function(l){
+    html+='<tr><td>'+l.ts+'</td><td>'+l.acao+'</td><td>'+l.elemento+'</td><td>'+l.motivo+'</td><td>'+l.protocolo+'</td></tr>';
+  });
+  html+='</table></div>';
+
+  el.innerHTML=html;
+  if(pf) rstDrawDigraph(pf);
+}
+
+var rstSim=null;
+function rstDrawDigraph(pf){
+  var svgEl=document.getElementById("rst-digraph-svg");
+  if(!svgEl) return;
+  var svg=d3.select(svgEl);
+  svg.selectAll("*").remove();
+  var W=svgEl.clientWidth||500, H=svgEl.clientHeight||280;
+
+  var chain=[
+    {id:pf.core.id, label:"CORE", node:pf.core},
+    {id:pf.pop.id, label:"POP", node:pf.pop},
+    {id:pf.olt.id, label:"OLT", node:pf.olt},
+    {id:pf.pon.id, label:"PON", node:pf.pon},
+    {id:pf.cto.id, label:"CTO", node:pf.cto},
+    {id:"ont-"+pf.ontId, label:"ONT", node:{label:pf.ontId, health:pf.online?"saudavel":"falha", type:"ont"}}
+  ];
+  var links=[]; for(var i=0;i<chain.length-1;i++) links.push({source:chain[i].id, target:chain[i+1].id});
+
+  var nmap={}; chain.forEach(function(c){nmap[c.id]=c;});
+  var linkData=links.map(function(l){return {source:nmap[l.source], target:nmap[l.target]};});
+
+  if(rstSim) rstSim.stop();
+  rstSim=d3.forceSimulation(chain)
+    .force("link", d3.forceLink(linkData).distance(70).strength(0.6))
+    .force("charge", d3.forceManyBody().strength(-220))
+    .force("center", d3.forceCenter(W/2,H/2))
+    .force("collide", d3.forceCollide().radius(26))
+    .alpha(0.9).alphaDecay(0.04);
+
+  var link=svg.append("g").selectAll("line").data(linkData).enter().append("line").attr("stroke","#2A4A6F").attr("stroke-width",1.6);
+  var node=svg.append("g").selectAll("g").data(chain).enter().append("g").style("cursor","pointer")
+    .call(d3.drag()
+      .on("start", function(ev,d){ if(!ev.active) rstSim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on("drag", function(ev,d){ d.fx=ev.x; d.fy=ev.y; })
+      .on("end", function(ev,d){ if(!ev.active) rstSim.alphaTarget(0); }))
+    .on("click", function(ev,d){ _rstShowNodeInfo(d); });
+
+  node.append("circle").attr("r",20)
+    .attr("fill", function(d){ return d.node.type==="ont" ? (d.node.health==="saudavel"?"#2ECC71":"#FF4444") : (STATE_COLOR[d.node.health]||"#12324A"); })
+    .attr("stroke","#0A1422").attr("stroke-width",1.5);
+  node.append("text").text(function(d){return d.label;}).attr("text-anchor","middle").attr("dy",4)
+    .attr("font-size",8).attr("fill","#0A1422").attr("font-weight",700).attr("font-family","Arial").attr("pointer-events","none");
+
+  rstSim.on("tick", function(){
+    link.attr("x1",function(d){return d.source.x;}).attr("y1",function(d){return d.source.y;})
+        .attr("x2",function(d){return d.target.x;}).attr("y2",function(d){return d.target.y;});
+    node.attr("transform", function(d){return "translate("+d.x+","+d.y+")";});
+  });
+}
+function _rstShowNodeInfo(d){
+  var el=document.getElementById("rst-node-info");
+  if(!el) return;
+  var n=d.node;
+  if(n.type==="ont"){
+    el.innerHTML="<b>"+n.label+"</b> — "+(n.health==="saudavel"?"online":"offline (sinal degradado/ausente)");
+  } else {
+    el.innerHTML="<b>"+n.label+"</b> — estado "+STATE_LABEL[n.health]+", utilização "+Math.round(n.util||n.portOccupancyPct||0)+"%, "+n.subsDownstream+" assinante(s) downstream.";
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   INIT — tela inicial é Topologia (classe screen-topology já no <body>).
+   Marcador NETGRAPH_INIT_START usado pelo harness de teste (Node, sem D3)
+   para truncar o script antes das chamadas que dependem de D3/DOM real.
+   ════════════════════════════════════════════════════════════════════════ */
+/* NETGRAPH_INIT_START */
+renderMetrics();
+renderZoneList();
+renderGraph();
 </script>
 </body>
 </html>
