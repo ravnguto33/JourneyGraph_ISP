@@ -405,6 +405,32 @@ var CAUSE_LIKELIHOOD = {
   degradacao_upstream:  {isSpof:0.10, singleLeafAffected:0.03, lossOutlier:0.35, latOutlier:0.88, utilDrop:0.05, wideBlast:0.92, olfOrPon:0.05, coreOrPop:0.90}
 };
 
+/* ── CAUSAS CANDIDATAS DA REDE BAYESIANA DE VOZ (SBC/SIP) — não reaproveita
+   os componentes físicos acima (isSpof/lossOutlier/utilDrop... não têm
+   correspondência causal direta com falha de sessão SIP); evidências
+   próprias vindas dos outliers dos 5 indicadores de voz (CSFR/SEFR/CSTR/
+   ISER/RUR), adaptado do relatório "FACOv e Outliers em VoLTE" §3.2. ── */
+var CAUSES_VOZ = [
+  {id:"sobrecarga_sbc",          label:"Sobrecarga de sessões no SBC",                    prior:0.26},
+  {id:"trunk_sip_indisponivel",  label:"Trunk SIP upstream indisponível",                 prior:0.18},
+  {id:"erro_interno_sbc",        label:"Erro interno do SBC (5xx)",                       prior:0.16},
+  {id:"incompatibilidade_codec", label:"Incompatibilidade de codec/SDP",                  prior:0.12},
+  {id:"falha_energia_pop",       label:"Falha de energia/UPS no POP (mesmo trunk do SBC)",prior:0.12},
+  {id:"anomalia_trafego_sip",    label:"Anomalia/ataque de tráfego SIP (scan, flood de INVITE)", prior:0.16}
+];
+/* Likelihood P(evidência=presente | causa) — evidências: outlier robusto em
+   cada um dos 5 indicadores, SPOF do trunk (isSpof, reaproveitado — é uma
+   função de grafo, não de métrica física), e wideVoice (SBC atende volume
+   de assinantes com voz ativa acima da mediana entre os 8 SBCs). */
+var CAUSE_LIKELIHOOD_VOZ = {
+  sobrecarga_sbc:           {csfrOutlier:0.85, sefrOutlier:0.25, cstrOutlier:0.75, iserOutlier:0.30, rurOutlier:0.55, isSpof:0.40, wideVoice:0.60},
+  trunk_sip_indisponivel:   {csfrOutlier:0.20, sefrOutlier:0.90, cstrOutlier:0.30, iserOutlier:0.15, rurOutlier:0.35, isSpof:0.55, wideVoice:0.75},
+  erro_interno_sbc:         {csfrOutlier:0.35, sefrOutlier:0.20, cstrOutlier:0.25, iserOutlier:0.90, rurOutlier:0.45, isSpof:0.35, wideVoice:0.30},
+  incompatibilidade_codec:  {csfrOutlier:0.15, sefrOutlier:0.30, cstrOutlier:0.10, iserOutlier:0.10, rurOutlier:0.15, isSpof:0.05, wideVoice:0.10},
+  falha_energia_pop:        {csfrOutlier:0.60, sefrOutlier:0.55, cstrOutlier:0.50, iserOutlier:0.40, rurOutlier:0.60, isSpof:0.70, wideVoice:0.80},
+  anomalia_trafego_sip:     {csfrOutlier:0.55, sefrOutlier:0.20, cstrOutlier:0.60, iserOutlier:0.25, rurOutlier:0.30, isSpof:0.10, wideVoice:0.35}
+};
+
 var RNG = seedRng("netgraph-visent-cdrview-2026");
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -480,6 +506,75 @@ function applyScenario(series, scenario, rng){
   return series;
 }
 
+/* ── Série sintética de VOZ (SBC/IMS) — paralela a genBaselineSeries, mas em
+   espaço de métricas de sessão SIP (CSFR/SEFR/CSTR/ISER/RUR, adaptadas do
+   relatório "FACOv e Outliers em VoLTE" — Tabela 1, análogos a CO1..COO),
+   não em util/lat/loss de enlace físico. Um valor-base fixo por indicador
+   (como no baseline físico), com ruído gaussiano por hora. ── */
+function genVoiceBaselineSeries(rng){
+  var baseAttempts=randRange(rng,150,900);
+  var baseCsfr=randRange(rng,0.4,1.8), baseSefr=randRange(rng,0.3,1.4), baseCstr=randRange(rng,0.2,1.0),
+      baseIser=randRange(rng,0.05,0.4), baseRur=randRange(rng,0.05,0.4);
+  var attempts=[],csfr=[],sefr=[],cstr=[],iser=[],rur=[];
+  for(var t=0;t<N_HOURS;t++){
+    attempts.push(Math.max(20, Math.round(baseAttempts + gaussish(rng)*40)));
+    csfr.push(Math.max(0, baseCsfr + gaussish(rng)*0.22));
+    sefr.push(Math.max(0, baseSefr + gaussish(rng)*0.18));
+    cstr.push(Math.max(0, baseCstr + gaussish(rng)*0.14));
+    iser.push(Math.max(0, baseIser + gaussish(rng)*0.06));
+    rur.push(Math.max(0, baseRur + gaussish(rng)*0.06));
+  }
+  return {attempts:attempts, csfr:csfr, sefr:sefr, cstr:cstr, iser:iser, rur:rur};
+}
+/* Cenários de incidente de voz — mesmo padrão de injeção de applyScenario,
+   mas expressos em taxonomia SIP (§3 do relatório FACOv), não em
+   util/lat/loss: sobrecarga de SBC ~ CO1/CSFR (408/503), trunk SIP
+   indisponível ~ CO2/SEFR (404/604), erro interno ~ COO/ISER+RUR (500/502),
+   anomalia de tráfego SIP ~ picos intermitentes de CSFR/CSTR. */
+function applyVoiceScenario(series, scenario, rng){
+  var n=series.csfr.length;
+  if(scenario==="sbc_sobrecarga"){
+    var t0=randInt(rng,n-14,n-4);
+    for(var t=t0;t<n;t++){
+      var amp=(t-t0)/Math.max(1,(n-1-t0));
+      series.csfr[t]=Math.min(45, series.csfr[t] + amp*randRange(rng,14,30));
+      series.cstr[t]=Math.min(35, series.cstr[t] + amp*randRange(rng,8,20));
+      series.rur[t]=Math.min(25, series.rur[t] + amp*randRange(rng,3,10));
+    }
+  } else if(scenario==="trunk_sip_indisponivel"){
+    var t1=randInt(rng,n-10,n-2);
+    for(var t2=t1;t2<n;t2++){
+      series.sefr[t2]=randRange(rng,20,55);
+      series.csfr[t2]=series.csfr[t2]+randRange(rng,1,4);
+    }
+  } else if(scenario==="erro_interno_sbc"){
+    var t3=randInt(rng,n-9,n-2);
+    for(var t4=t3;t4<n;t4++){
+      series.iser[t4]=randRange(rng,8,28);
+      series.rur[t4]=randRange(rng,5,18);
+      series.csfr[t4]=series.csfr[t4]+randRange(rng,2,7);
+    }
+  } else if(scenario==="anomalia_trafego_sip"){
+    for(var t5=n-16;t5<n;t5++){
+      if(rng()<0.4){ series.csfr[t5]+=randRange(rng,6,16); series.cstr[t5]+=randRange(rng,4,12); }
+    }
+  }
+  return series;
+}
+/* Classificação de estado por CO1..COO — pior indicador do conjunto
+   determina o estado do SBC, devolvendo os mesmos rótulos de STATE_ORDER
+   usados pela topologia física, para plugar sem alteração no mesmo motor
+   de Markov (estimateMarkovMatrix é agrupado por node.type, então "sbc"
+   ganha sua própria matriz estimada automaticamente). Limiares adaptados
+   do relatório "FACOv e Outliers em VoLTE", §3.2 (CO1→CSFR, CO2→SEFR,
+   CO3→CSTR, COO→ISER/RUR). */
+function classifyVoiceState(csfr,sefr,cstr,iser,rur){
+  if(csfr>=12||sefr>=10||cstr>=8||iser>=6||rur>=6) return "falha";
+  if(csfr>=6||sefr>=5||cstr>=4||iser>=3||rur>=3) return "critico";
+  if(csfr>=2||sefr>=1.5||cstr>=1.2||iser>=0.8||rur>=0.8) return "degradado";
+  return "saudavel";
+}
+
 function classifyState(type, util, lat, loss){
   /* Limiares por natureza da métrica no nível (banda para core/pop/olt,
      ocupação de portas para pon/cto) — aplicados de forma consistente para
@@ -507,7 +602,7 @@ function link(parentId, childId, type, capacityMbps, redundant){
   makeNode("core-1","core","Borda Upstream A",null,{capacityMbps:100000,slaTier:"backbone",provider:"Trânsito IP — Provedor Upstream A"});
   makeNode("core-2","core","Borda Upstream B",null,{capacityMbps:100000,slaTier:"backbone",provider:"Trânsito IP — Provedor Upstream B"});
 
-  var oltIds=[], ponIds=[], ctoIds=[];
+  var oltIds=[], ponIds=[], ctoIds=[], sbcIds=[];
 
   ZONES.forEach(function(z, zi){
     var popId="pop-"+z.id;
@@ -518,6 +613,17 @@ function link(parentId, childId, type, capacityMbps, redundant){
     var dualHomed = zi%3===0;
     link("core-1", popId, "uplink-fibra", 10000, dualHomed);
     if(dualHomed) link("core-2", popId, "uplink-fibra", 10000, true);
+
+    /* SBC (Session Border Controller) — camada de voz/IMS "leve" do ISP
+       fixo: registra e comuta sessões SIP dos assinantes com serviço de voz
+       ativo, sem EPC/rádio móvel por trás (isso seria VoLTE de operador
+       móvel, fora do domínio deste ISP fictício — ver docs/journeygraph e
+       netgraph prompts). Um único trunk não-redundante por POP, coerente
+       com o mesmo padrão de custo já usado no uplink de fibra. */
+    var sbcId="sbc-"+z.id;
+    makeNode(sbcId,"sbc","SBC "+z.label,z.id,{capacitySessions:randInt(RNG,4000,12000)});
+    link(popId, sbcId, "trunk-sip", null, false);
+    sbcIds.push(sbcId);
 
     var nOlt = randInt(RNG,2,4);
     for(var oi=0; oi<nOlt; oi++){
@@ -562,9 +668,13 @@ function link(parentId, childId, type, capacityMbps, redundant){
   }
   Object.keys(NODES).forEach(function(id){
     var n=NODES[id];
-    var b=baselineFor(n.type);
     n.scenario="estavel";
-    n.series=genBaselineSeries(RNG, b.util, b.lat, b.loss, 0);
+    if(n.type==="sbc"){
+      n.series=genVoiceBaselineSeries(RNG);
+    } else {
+      var b=baselineFor(n.type);
+      n.series=genBaselineSeries(RNG, b.util, b.lat, b.loss, 0);
+    }
   });
 
   /* Atribuição sequencial de cenário "incidente" a um subconjunto de nós,
@@ -572,6 +682,8 @@ function link(parentId, childId, type, capacityMbps, redundant){
      categorias — cada draw consome da lista ainda não usada da categoria. */
   var usedOlt = [];
   function drawOlt(n){ var avail=oltIds.filter(function(id){return usedOlt.indexOf(id)<0;}); var picked=shuffleN(avail,n,RNG); usedOlt=usedOlt.concat(picked); return picked; }
+  var usedSbc = [];
+  function drawSbc(n){ var avail=sbcIds.filter(function(id){return usedSbc.indexOf(id)<0;}); var picked=shuffleN(avail,n,RNG); usedSbc=usedSbc.concat(picked); return picked; }
 
   var incidentAssignments = [];
   incidentAssignments.push({ids:["core-2"], scenario:"degradacao_upstream"});
@@ -581,25 +693,46 @@ function link(parentId, childId, type, capacityMbps, redundant){
   incidentAssignments.push({ids:drawOlt(2), scenario:"falha_equipamento"});
   incidentAssignments.push({ids:shuffleN(ponIds,3,RNG), scenario:"anomalia_trafego"});
   incidentAssignments.push({ids:shuffleN(ctoIds,4,RNG), scenario:"rompimento_fibra"});
+  /* Camada de voz (SBC) — 3 de 8 SBCs recebem incidente, um de cada tipo
+     candidato à rede Bayesiana de voz (ver CAUSES_VOZ), os demais ficam
+     estáveis — mesma proporção qualitativa da camada física acima. */
+  incidentAssignments.push({ids:drawSbc(1), scenario:"sbc_sobrecarga"});
+  incidentAssignments.push({ids:drawSbc(1), scenario:"trunk_sip_indisponivel"});
+  incidentAssignments.push({ids:drawSbc(1), scenario:"erro_interno_sbc"});
 
   incidentAssignments.forEach(function(a){
     a.ids.forEach(function(id){
       var n=NODES[id];
       if(!n) return;
       n.scenario=a.scenario;
-      applyScenario(n.series, a.scenario, RNG);
+      if(n.type==="sbc") applyVoiceScenario(n.series, a.scenario, RNG);
+      else applyScenario(n.series, a.scenario, RNG);
     });
   });
 
   /* Estado atual e sequência de estados (para Markov) por nó, a partir da
-     série sintética recém-gerada. */
+     série sintética recém-gerada — ramificado por família de métrica
+     (física util/lat/loss vs. voz CSFR/SEFR/CSTR/ISER/RUR). */
   Object.keys(NODES).forEach(function(id){
     var n=NODES[id];
-    n.states = n.series.util.map(function(u,t){ return classifyState(n.type, u, n.series.lat[t], n.series.loss[t]); });
-    n.health = n.states[n.states.length-1];
-    n.util = n.series.util[n.series.util.length-1];
-    n.lat = n.series.lat[n.series.lat.length-1];
-    n.loss = n.series.loss[n.series.loss.length-1];
+    if(n.type==="sbc"){
+      n.states = n.series.csfr.map(function(_,t){
+        return classifyVoiceState(n.series.csfr[t], n.series.sefr[t], n.series.cstr[t], n.series.iser[t], n.series.rur[t]);
+      });
+      n.health = n.states[n.states.length-1];
+      n.csfr = n.series.csfr[n.series.csfr.length-1];
+      n.sefr = n.series.sefr[n.series.sefr.length-1];
+      n.cstr = n.series.cstr[n.series.cstr.length-1];
+      n.iser = n.series.iser[n.series.iser.length-1];
+      n.rur  = n.series.rur[n.series.rur.length-1];
+      n.attemptsPerHour = n.series.attempts[n.series.attempts.length-1];
+    } else {
+      n.states = n.series.util.map(function(u,t){ return classifyState(n.type, u, n.series.lat[t], n.series.loss[t]); });
+      n.health = n.states[n.states.length-1];
+      n.util = n.series.util[n.series.util.length-1];
+      n.lat = n.series.lat[n.series.lat.length-1];
+      n.loss = n.series.loss[n.series.loss.length-1];
+    }
     n.uptimePct = n.scenario==="estavel" ? (99.90+RNG()*0.09) : (n.health==="falha"?randRange(RNG,94,98.5):randRange(RNG,97,99.8));
   });
 
@@ -619,6 +752,20 @@ function link(parentId, childId, type, capacityMbps, redundant){
     n.hasCorporate=corp;
   }
   aggregateUp("core-1"); aggregateUp("core-2");
+
+  /* Assinantes com serviço de voz ativo atendidos por cada SBC — fração
+     sintética (12–30%) dos assinantes downstream do POP correspondente,
+     só pode ser calculada aqui porque depende do agregado de subsDownstream
+     por CTO (aggregateUp acima). Usado como proxy de blast radius/impacto
+     de negócio para alertas de voz, já que blastRadius() físico só soma
+     descendentes tipo CTO — e o SBC não tem CTO na própria subárvore. */
+  Object.keys(NODES).forEach(function(id){
+    var n=NODES[id];
+    if(n.type==="sbc"){
+      var pop=NODES[PARENT[id]];
+      n.voiceSubscribers = Math.round((pop.subsDownstream||0) * randRange(RNG,0.12,0.30));
+    }
+  });
 
   /* Utilização de portas para PON/CTO, sobrescrevendo a série sintética de
      "util" desses dois níveis pela ocupação real (subs/portas) — mais fiel
@@ -775,17 +922,34 @@ function robustOutliers(series){
   var isOutlier = z.map(function(v){ return Math.abs(v)>3.5; });
   return {median:med, mad:mad, z:z, isOutlier:isOutlier, lastZ:z[z.length-1], isOutlierNow:isOutlier[isOutlier.length-1]};
 }
+/* Ramificado por família de métrica: nós físicos (util/lat/loss) vs. SBC de
+   voz (CSFR/SEFR/CSTR/ISER/RUR) — robustOutliers() em si é genérico (só
+   precisa de uma série numérica), reaproveitado sem alteração nos dois
+   ramos. */
 function nodeOutlierFlags(node){
+  if(node.type==="sbc"){
+    return {
+      csfr: robustOutliers(node.series.csfr),
+      sefr: robustOutliers(node.series.sefr),
+      cstr: robustOutliers(node.series.cstr),
+      iser: robustOutliers(node.series.iser),
+      rur:  robustOutliers(node.series.rur)
+    };
+  }
   return {
     util: robustOutliers(node.series.util),
     lat:  robustOutliers(node.series.lat),
     loss: robustOutliers(node.series.loss)
   };
 }
-/* Score de outlier combinado 0–100 (usado no índice de risco §5.4). */
+/* Score de outlier combinado 0–100 (usado no índice de risco §5.4) — genérico
+   sobre as chaves devolvidas por nodeOutlierFlags, funciona igual para os
+   3 indicadores físicos ou os 5 indicadores de voz sem precisar saber quais
+   são. */
 function outlierScore(node){
   var f = nodeOutlierFlags(node);
-  var mx = Math.max(Math.abs(f.util.lastZ), Math.abs(f.lat.lastZ), Math.abs(f.loss.lastZ));
+  var mx = 0;
+  Object.keys(f).forEach(function(k){ mx = Math.max(mx, Math.abs(f[k].lastZ)); });
   return Math.max(0, Math.min(100, Math.round(mx*12)));
 }
 
@@ -892,6 +1056,50 @@ function bayesCauses(node){
   return {posterior:posts, evidence:ev, top:posts[0]};
 }
 
+/* Mediana de assinantes com voz ativa entre os SBCs — usada como referência
+   de "wideVoice" (evidência de blast radius amplo) na rede Bayesiana de
+   voz, em vez de um limiar fixo arbitrário. */
+function sbcVoiceSubsMedian(){
+  var vals = Object.keys(NODES).filter(function(id){ return NODES[id].type==="sbc"; })
+    .map(function(id){ return NODES[id].voiceSubscribers||0; });
+  return median(vals.length?vals:[0]);
+}
+/* Rede Bayesiana de voz (SBC) — mesmo padrão naive Bayes de bayesCauses()
+   acima, mas com evidência e causas próprias do domínio SIP (§6 do relatório
+   FACOv: códigos de resposta SIP como evidência indireta via outlier dos
+   indicadores CSFR/SEFR/CSTR/ISER/RUR que os representam). */
+function bayesCausesVoice(node){
+  var out=nodeOutlierFlags(node);
+  var ev = {
+    csfrOutlier: out.csfr.isOutlierNow,
+    sefrOutlier: out.sefr.isOutlierNow,
+    cstrOutlier: out.cstr.isOutlierNow,
+    iserOutlier: out.iser.isOutlierNow,
+    rurOutlier:  out.rur.isOutlierNow,
+    isSpof: isSPOF(node.id),
+    wideVoice: (node.voiceSubscribers||0) >= sbcVoiceSubsMedian()
+  };
+  var posts = CAUSES_VOZ.map(function(c){
+    var lk = CAUSE_LIKELIHOOD_VOZ[c.id];
+    var p = c.prior;
+    Object.keys(lk).forEach(function(k){
+      var pTrue = lk[k];
+      p *= ev[k] ? pTrue : (1-pTrue);
+    });
+    return {id:c.id, label:c.label, raw:p};
+  });
+  var total = posts.reduce(function(s,p){return s+p.raw;},0) || 1e-9;
+  posts.forEach(function(p){ p.prob = p.raw/total; });
+  posts.sort(function(a,b){ return b.prob-a.prob; });
+  return {posterior:posts, evidence:ev, top:posts[0]};
+}
+/* Dispatcher único usado por buildAlerts()/renderNodeDetail() — decide qual
+   rede Bayesiana (física ou de voz) aplicar, sem os chamadores precisarem
+   saber o tipo do nó. */
+function bayesCausesFor(node){
+  return node.type==="sbc" ? bayesCausesVoice(node) : bayesCauses(node);
+}
+
 /* ════════════════════════════════════════════════════════════════════════
    Índice de risco combinado (§5.4): Markov + outlier + centralidade
    ════════════════════════════════════════════════════════════════════════ */
@@ -969,8 +1177,17 @@ function buildAlerts(){
   var list = candidates.map(function(id){
     var n = NODES[id];
     var mk = markovPredict(n,4);
-    var by = bayesCauses(n);
+    var isVoice = n.type==="sbc";
+    var by = bayesCausesFor(n);
     var br = blastRadius(id);
+    if(isVoice){
+      /* blastRadius() físico só soma descendentes tipo CTO — um SBC é folha
+         sem CTO na própria subárvore, então reportaria 0 sempre. O impacto
+         real de uma falha de voz vem do universo sintético de assinantes
+         com voz ativa (voiceSubscribers), calculado no gerador. */
+      var popOfSbc = NODES[PARENT[id]];
+      br = {nodeIds:[id], subsAffected:(n.voiceSubscribers||0), zones:[n.zone], hasCorporate: !!(popOfSbc&&popOfSbc.hasCorporate)};
+    }
     var out = outlierScore(n);
     var cent = centralityScore(id);
     var spof = isSPOF(id);
@@ -996,7 +1213,7 @@ function buildAlerts(){
 
     var scoreTotal = Math.round(gravidade*0.5 + impacto*0.5);
 
-    var camada = n.type==="core"||n.type==="pop" ? "Fault Management" : (out>=55?"Performance Management":"Fault Management");
+    var camada = isVoice ? "Fault Management (Voz/SIP)" : (n.type==="core"||n.type==="pop" ? "Fault Management" : (out>=55?"Performance Management":"Fault Management"));
 
     return {
       id:"AL-"+id,
@@ -1004,7 +1221,7 @@ function buildAlerts(){
       camada:camada,
       classe: n.type.toUpperCase(),
       objeto:n.label,
-      indicador: n.type==="pon"||n.type==="cto" ? "Ocupação de portas / perda / latência" : "Utilização de banda / perda / latência",
+      indicador: isVoice ? "CSFR/SEFR/CSTR/ISER/RUR (voz SIP)" : (n.type==="pon"||n.type==="cto" ? "Ocupação de portas / perda / latência" : "Utilização de banda / perda / latência"),
       severidade: n.health,
       gravidade:gravidade, impacto:impacto, score:scoreTotal,
       markov:mk, bayes:by, blast:br, outlierScore:out, centrality:cent, spof:spof, risk:risk,
@@ -1147,8 +1364,9 @@ function renderGraph(){
   var el=document.getElementById("screen-topology");
   var W=el.clientWidth||700, H=el.clientHeight||480;
 
-  var rScale=d3.scaleSqrt().domain([1, d3.max(nodes,function(n){return n.subsDownstream||1;})||1]).range([7,42]);
-  nodes.forEach(function(n){ n.r = n.type==="core" ? 26 : Math.max(8, rScale(n.subsDownstream||1)); });
+  function sizeBasis(n){ return n.type==="sbc" ? (n.voiceSubscribers||1) : (n.subsDownstream||1); }
+  var rScale=d3.scaleSqrt().domain([1, d3.max(nodes,sizeBasis)||1]).range([7,42]);
+  nodes.forEach(function(n){ n.r = n.type==="core" ? 26 : Math.max(8, rScale(sizeBasis(n))); });
 
   var zoomG=svgEl.append("g").attr("class","zoom-layer");
   var zoomBeh=d3.zoom().scaleExtent([0.25,5]).on("zoom",function(ev){ zoomG.attr("transform",ev.transform); });
@@ -1202,7 +1420,8 @@ function renderGraph(){
 function showTooltip(ev,d){
   var tt=document.getElementById("tooltip");
   tt.style.display="block";
-  tt.innerHTML="<b>"+d.label+"</b><br>Estado: "+STATE_LABEL[d.health]+"<br>Assinantes downstream: "+d.subsDownstream+
+  var subsLine = d.type==="sbc" ? ("Assinantes com voz ativa: "+(d.voiceSubscribers||0)) : ("Assinantes downstream: "+d.subsDownstream);
+  tt.innerHTML="<b>"+d.label+"</b><br>Estado: "+STATE_LABEL[d.health]+"<br>"+subsLine+
     (isSPOF(d.id)?"<br><span style='color:#FF4444'>SPOF — sem redundância</span>":"");
   moveTooltip(ev);
 }
@@ -1227,10 +1446,15 @@ function renderNodeDetail(id){
   var el=document.getElementById("node-detail");
   var n=NODES[id];
   if(!n){ el.innerHTML='<div style="font-size:11.5px;color:#3A6080;">Nó não encontrado.</div>'; return; }
+  var isVoice = n.type==="sbc";
   var mk=markovPredict(n,4);
   var out=nodeOutlierFlags(n);
-  var by=bayesCauses(n);
+  var by=bayesCausesFor(n);
   var br=blastRadius(id);
+  if(isVoice){
+    var popOfSbc=NODES[PARENT[id]];
+    br={nodeIds:[id], subsAffected:(n.voiceSubscribers||0), zones:[n.zone], hasCorporate: !!(popOfSbc&&popOfSbc.hasCorporate)};
+  }
   var risk=riskIndex(n);
   var spof=isSPOF(id);
   var cent=centralityScore(id);
@@ -1244,11 +1468,21 @@ function renderNodeDetail(id){
   html+='<div class="nd-row"><span class="k">Zona</span><span class="v">'+(ZONES.find(function(z){return z.id===n.zone;})||{label:"—"}).label+'</span></div>';
   if(n.capacityMbps) html+='<div class="nd-row"><span class="k">Capacidade nominal</span><span class="v">'+fmtN(n.capacityMbps)+' Mbps</span></div>';
   if(n.capacityPorts) html+='<div class="nd-row"><span class="k">Portas</span><span class="v">'+(n.portsUsed||0)+' / '+n.capacityPorts+' ('+(n.portOccupancyPct||0)+'%)</span></div>';
-  html+='<div class="nd-row"><span class="k">Utilização atual</span><span class="v">'+Math.round(n.util)+'%</span></div>';
-  html+='<div class="nd-row"><span class="k">Latência</span><span class="v">'+Math.round(n.lat)+' ms</span></div>';
-  html+='<div class="nd-row"><span class="k">Perda de pacotes</span><span class="v">'+n.loss.toFixed(2)+'%</span></div>';
+  if(n.capacitySessions) html+='<div class="nd-row"><span class="k">Capacidade de sessões SIP</span><span class="v">'+fmtN(n.capacitySessions)+'</span></div>';
+  if(isVoice){
+    html+='<div class="nd-row"><span class="k">Tentativas de sessão/h</span><span class="v">'+fmtN(n.attemptsPerHour)+'</span></div>';
+    html+='<div class="nd-row"><span class="k">CSFR</span><span class="v">'+n.csfr.toFixed(2)+'%</span></div>';
+    html+='<div class="nd-row"><span class="k">SEFR</span><span class="v">'+n.sefr.toFixed(2)+'%</span></div>';
+    html+='<div class="nd-row"><span class="k">CSTR</span><span class="v">'+n.cstr.toFixed(2)+'%</span></div>';
+    html+='<div class="nd-row"><span class="k">ISER</span><span class="v">'+n.iser.toFixed(2)+'%</span></div>';
+    html+='<div class="nd-row"><span class="k">RUR</span><span class="v">'+n.rur.toFixed(2)+'%</span></div>';
+  } else {
+    html+='<div class="nd-row"><span class="k">Utilização atual</span><span class="v">'+Math.round(n.util)+'%</span></div>';
+    html+='<div class="nd-row"><span class="k">Latência</span><span class="v">'+Math.round(n.lat)+' ms</span></div>';
+    html+='<div class="nd-row"><span class="k">Perda de pacotes</span><span class="v">'+n.loss.toFixed(2)+'%</span></div>';
+  }
   html+='<div class="nd-row"><span class="k">Uptime</span><span class="v">'+n.uptimePct.toFixed(2)+'%</span></div>';
-  html+='<div class="nd-row"><span class="k">Assinantes downstream</span><span class="v">'+n.subsDownstream+'</span></div>';
+  html+='<div class="nd-row"><span class="k">'+(isVoice?"Assinantes com voz ativa":"Assinantes downstream")+'</span><span class="v">'+(isVoice?(n.voiceSubscribers||0):n.subsDownstream)+'</span></div>';
   html+='<div class="nd-row"><span class="k">Cenário sintético</span><span class="v" style="text-transform:capitalize;">'+n.scenario.replace(/_/g," ")+'</span></div>';
   html+='</div>';
 
@@ -1272,7 +1506,10 @@ function renderNodeDetail(id){
 
   html+='<div class="nd-card">';
   html+='<div class="ds-title" style="margin:0 0 6px;">Outlier (z-score robusto / MAD)</div>';
-  [["Utilização",out.util],["Latência",out.lat],["Perda",out.loss]].forEach(function(pair){
+  var outlierPairs = isVoice
+    ? [["CSFR",out.csfr],["SEFR",out.sefr],["CSTR",out.cstr],["ISER",out.iser],["RUR",out.rur]]
+    : [["Utilização",out.util],["Latência",out.lat],["Perda",out.loss]];
+  outlierPairs.forEach(function(pair){
     var flag=pair[1].isOutlierNow;
     html+='<div class="nd-row"><span class="k">'+pair[0]+'</span><span class="v" style="color:'+(flag?"#FF4444":"#8ABEDF")+';">z='+pair[1].lastZ.toFixed(1)+(flag?" (outlier)":"")+'</span></div>';
   });
@@ -1403,7 +1640,7 @@ function renderAlerts(){
       html+='<div class="al-body">';
 
       html+='<div class="al-sec-title">1. O quê</div>';
-      html+='<div style="font-size:12.5px;color:#D0E8FF;">'+a.node.label+' ('+a.classe+', zona '+((ZONES.find(function(z){return z.id===a.node.zone;})||{}).label||"backbone")+') está em estado <b style="color:'+STATE_COLOR[a.severidade]+';">'+STATE_LABEL[a.severidade]+'</b>. '+a.indicador+': utilização '+Math.round(a.node.util)+'%, latência '+Math.round(a.node.lat)+' ms, perda '+a.node.loss.toFixed(2)+'%'+(a.outlierScore>=42?" — padrão estatisticamente atípico (outlier robusto, não apenas limiar fixo)":"")+'.</div>';
+      html+='<div style="font-size:12.5px;color:#D0E8FF;">'+a.node.label+' ('+a.classe+', zona '+((ZONES.find(function(z){return z.id===a.node.zone;})||{}).label||"backbone")+') está em estado <b style="color:'+STATE_COLOR[a.severidade]+';">'+STATE_LABEL[a.severidade]+'</b>. '+a.indicador+': '+alertWhatMetrics(a)+(a.outlierScore>=42?" — padrão estatisticamente atípico (outlier robusto, não apenas limiar fixo)":"")+'.</div>';
 
       html+='<div class="al-sec-title">2. Por quê (causa provável — rede Bayesiana)</div>';
       a.bayes.posterior.slice(0,4).forEach(function(p){
@@ -1449,6 +1686,15 @@ function renderAlerts(){
   el.innerHTML=html;
 }
 
+/* Texto de "1. O quê" de cada alerta — ramificado por família de indicador
+   (física util/lat/loss vs. voz CSFR/SEFR/CSTR/ISER/RUR), usado tanto na
+   tela de Alertas quanto na resposta do Assistente (explainAlertAnswer),
+   para não duplicar a lógica de ramificação em dois lugares. */
+function alertWhatMetrics(a){
+  return a.node.type==="sbc"
+    ? "CSFR "+a.node.csfr.toFixed(2)+"%, SEFR "+a.node.sefr.toFixed(2)+"%, CSTR "+a.node.cstr.toFixed(2)+"%, ISER "+a.node.iser.toFixed(2)+"%, RUR "+a.node.rur.toFixed(2)+"%"
+    : "utilização "+Math.round(a.node.util)+"%, latência "+Math.round(a.node.lat)+" ms, perda "+a.node.loss.toFixed(2)+"%";
+}
 function recommendedAction(a){
   var byId=a.bayes.top.id;
   var acts = {
@@ -1457,7 +1703,13 @@ function recommendedAction(a){
     sobrecarga_olt:"Avaliar upgrade/expansão de capacidade da OLT (ver projeção na aba Capacidade) e, no curto prazo, balanceamento de carga entre PONs.",
     falha_equipamento:"Acionar NOC para diagnóstico remoto e, se necessário, substituição de placa/equipamento ativo — abrir chamado com fornecedor se dentro de garantia.",
     anomalia_trafego:"Investigar padrão de tráfego (possível anomalia de segurança) — aplicar rate-limit temporário e escalar ao time de segurança de rede se o padrão persistir.",
-    degradacao_upstream:"Contatar o provedor de trânsito IP para verificação de rota/congestionamento — considerar failover para o link upstream redundante, se disponível."
+    degradacao_upstream:"Contatar o provedor de trânsito IP para verificação de rota/congestionamento — considerar failover para o link upstream redundante, se disponível.",
+    sobrecarga_sbc:"Avaliar expansão de capacidade de sessões do SBC (ver tentativas/hora no detalhe do nó) e balanceamento de trunks SIP entre POPs vizinhos — mesmo racional da expansão de OLT.",
+    trunk_sip_indisponivel:"Contatar o provedor de trunk SIP/interconexão de voz para verificação de rota — considerar trunk alternativo, se configurado, análogo ao failover de trânsito IP.",
+    erro_interno_sbc:"Acionar NOC para diagnóstico remoto do SBC (logs de erro 5xx) e, se necessário, reinício controlado ou substituição — abrir chamado com fornecedor se dentro de garantia.",
+    incompatibilidade_codec:"Revisar perfis de codec/SDP negociados entre CPE e SBC — verificar se o padrão de erro está concentrado em um modelo/firmware específico de ONT/roteador.",
+    falha_energia_pop:"Verificar UPS/gerador do POP que atende este SBC e acionar equipe de energia — mesma prioridade da falha de energia física.",
+    anomalia_trafego_sip:"Investigar padrão de sinalização SIP (possível scan/flood de INVITE) — aplicar rate-limit temporário no SBC e escalar ao time de segurança de rede se persistir."
   };
   return (acts[byId]||"Encaminhar ao NOC para triagem.") + " (Nível 1 semi-automático — mesmo padrão de encaminhamento do JourneyGraph.)";
 }
@@ -1470,7 +1722,7 @@ function explainAlertAnswer(alertId){
   if(!a) return null;
   return {
     resposta: "<b>"+a.node.label+"</b> — "+STATE_LABEL[a.severidade]+" (score "+a.score+"/100)<br><br>"
-      +"<b>1. O quê:</b> "+a.indicador+", util. "+Math.round(a.node.util)+"%, latência "+Math.round(a.node.lat)+"ms, perda "+a.node.loss.toFixed(2)+"%.<br>"
+      +"<b>1. O quê:</b> "+a.indicador+", "+alertWhatMetrics(a)+".<br>"
       +"<b>2. Por quê:</b> causa mais provável "+a.bayes.top.label+" ("+Math.round(a.bayes.top.prob*100)+"% de confiança, rede Bayesiana).<br>"
       +"<b>3. Tendência:</b> "+Math.round(a.markov.pWorse*100)+"% de chance de piorar em "+a.markov.hoursAhead+"h (Markov).<br>"
       +"<b>4. Afetados:</b> "+a.blast.subsAffected+" assinante(s)"+(a.blast.hasCorporate?" (com corporativo/SLA)":"")+"."+(a.spof?" Ponto único de falha (SPOF).":"")+"<br>"
@@ -1905,6 +2157,11 @@ function rstResolveQuery(raw){
   return {ctoId:ctoId, ontIndex:1+Math.floor(rnd()*cto.subscribers)};
 }
 var RST_CAUSAS_DIST=[{causa:"User-Request",pct:68},{causa:"Lost-Carrier (ONT)",pct:16},{causa:"Power-Failure (CPE)",pct:8},{causa:"Signal-Degradation",pct:5},{causa:"Admin-Reset",pct:3}];
+/* Distribuição sintética de código de resposta SIP para o log de chamadas
+   de voz da Consulta Individual — irmã de RST_CAUSAS_DIST (RADIUS), mesma
+   técnica de amostragem ponderada (rstWeightedPick), taxonomia da Tabela 2
+   do relatório "FACOv e Outliers em VoLTE". */
+var RST_SIP_CAUSAS_DIST=[{causa:"200 OK",pct:80},{causa:"486 Busy Here",pct:7},{causa:"480 Temporarily Unavailable",pct:5},{causa:"408 Request Timeout",pct:4},{causa:"503 Service Unavailable",pct:3},{causa:"500 Internal Server Error",pct:1}];
 function rstWeightedPick(rnd, items, weightFn){
   var total=0; items.forEach(function(it){total+=weightFn(it)||0;});
   var r=rnd()*total, acc=0;
@@ -1920,6 +2177,7 @@ function rstGenProfile(query){
   var pop=NODES[PARENT[olt.id]];
   var coreEdge = EDGES.find(function(e){ return e.target===pop.id; });
   var core=NODES[coreEdge.source];
+  var sbc=NODES["sbc-"+pop.zone];
   var rnd=seedRng("rst-profile-"+resolved.ctoId+"-"+resolved.ontIndex);
   var isCorporate = cto.corporate && resolved.ontIndex===1;
   var ontId = "ONT"+String(resolved.ontIndex).padStart(3,"0")+"-"+resolved.ctoId.toUpperCase();
@@ -1932,10 +2190,24 @@ function rstGenProfile(query){
     var d=new Date(NOW_TS); d.setDate(d.getDate()-diasAtras);
     sessoes.push({data:d.toLocaleDateString("pt-BR"), duracao:Math.round(20+rnd()*600), causa:causa});
   }
+  /* Serviço de voz (SBC/IMS) — nem todo assinante contrata voz sobre a
+     própria rede fixa; quando contrata, o log de chamadas usa o mesmo
+     mecanismo de amostragem ponderada, agora sobre RST_SIP_CAUSAS_DIST. */
+  var voiceEnabled = rnd()<0.55;
+  var chamadasVoz=[];
+  if(voiceEnabled){
+    for(var j=0;j<5;j++){
+      var codigo=rstWeightedPick(rnd, RST_SIP_CAUSAS_DIST, function(c){return c.pct;}).causa;
+      var diasAtras2=Math.floor(rnd()*10)+1;
+      var d2=new Date(NOW_TS); d2.setDate(d2.getDate()-diasAtras2);
+      chamadasVoz.push({data:d2.toLocaleDateString("pt-BR"), duracao:codigo==="200 OK"?Math.round(15+rnd()*400):0, codigo:codigo});
+    }
+  }
   return {
-    query:query, ontId:ontId, ctoId:cto.id, cto:cto, pon:pon, olt:olt, pop:pop, core:core,
+    query:query, ontId:ontId, ctoId:cto.id, cto:cto, pon:pon, olt:olt, pop:pop, core:core, sbc:sbc,
     corporate:isCorporate, online:online, rxPower:Number(rxPower), plano: isCorporate?"Corporativo — SLA diferenciado":pick(["Residencial 300 Mbps","Residencial 500 Mbps","Residencial 1 Gbps"],rnd),
-    zona:(ZONES.find(function(z){return z.id===cto.zone;})||{}).label, sessoes:sessoes
+    zona:(ZONES.find(function(z){return z.id===cto.zone;})||{}).label, sessoes:sessoes,
+    voiceEnabled:voiceEnabled, chamadasVoz:chamadasVoz
   };
 }
 function rstSearch(){
@@ -1979,6 +2251,7 @@ function renderRestricted(){
     html+=rrow("CTO", pf.ctoId+" ("+pf.cto.portsUsed+"/"+pf.cto.capacityPorts+" portas)");
     html+=rrow("OLT", pf.olt.label+" — util. "+Math.round(pf.olt.util)+"%");
     html+=rrow("Assinantes na mesma CTO", pf.cto.subscribers);
+    html+=rrow("SBC (voz)", pf.sbc ? (pf.sbc.label+" — estado "+STATE_LABEL[pf.sbc.health]) : "—");
     html+='</div>';
 
     html+='<div style="background:#0C1829;border:1px solid #1A3050;border-radius:10px;padding:14px;margin-bottom:16px;">';
@@ -1992,6 +2265,17 @@ function renderRestricted(){
     html+='<div style="overflow-x:auto;"><table class="rst-audit-table"><tr><th>Data</th><th>Duração (s)</th><th>Causa</th></tr>';
     pf.sessoes.forEach(function(s){ html+='<tr><td>'+s.data+'</td><td>'+s.duracao+'</td><td>'+s.causa+'</td></tr>'; });
     html+='</table></div></div>';
+
+    html+='<div style="background:#0C1829;border:1px solid #1A3050;border-radius:10px;padding:14px;margin-bottom:16px;">';
+    html+='<div style="font-size:11px;color:#8ABEDF;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Serviço de voz (SBC/IMS)'+(pf.voiceEnabled&&pf.sbc?(' — atendido por '+pf.sbc.label):'')+'</div>';
+    if(pf.voiceEnabled){
+      html+='<div style="overflow-x:auto;"><table class="rst-audit-table"><tr><th>Data</th><th>Duração (s)</th><th>Código SIP</th></tr>';
+      pf.chamadasVoz.forEach(function(s){ html+='<tr><td>'+s.data+'</td><td>'+s.duracao+'</td><td>'+s.codigo+'</td></tr>'; });
+      html+='</table></div>';
+    } else {
+      html+='<div style="font-size:11.5px;color:#567898;">Este assinante não possui serviço de voz sobre IMS/SBC contratado.</div>';
+    }
+    html+='</div>';
   } else {
     html+='<div style="text-align:center;padding:20px;color:#3A6080;font-size:12px;background:#0C1829;border:1px solid #1A3050;border-radius:8px;margin-bottom:16px;">Nenhuma consulta feita ainda nesta sessão.</div>';
   }
