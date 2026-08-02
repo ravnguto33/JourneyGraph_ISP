@@ -3218,7 +3218,7 @@ function renderHealth(){
   svgHtml += '</g></svg>';
 
   c1.innerHTML='<div class="health-title">&#127761; Exposição Noturna 22h–6h</div>'
-    +'<div class="health-big" style="color:#9400D3">'+late+'%</div>'
+    +'<div class="health-big" style="color:#9400D3">'+late.toFixed(1)+'%</div>'
     +'<div class="health-sub">do tráfego total em horário de sono &middot; pico: '+peakH+'h</div>'
     +'<div class="health-sub" style="color:'+riskClr(latePct)+'">'+nHigh+' assinantes ('+latePct+'%) com uso noturno intenso (&gt;15% do tráfego)</div>'
     +svgHtml;
