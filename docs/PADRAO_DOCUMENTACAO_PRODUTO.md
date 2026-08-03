@@ -1,6 +1,6 @@
 # Padrão de Documentação de Produto — Vísent
 
-**Versão:** 1.0 · **Data:** 2026-08-02 · **Status:** adotado para os produtos da Lounge de Soluções ISP (JourneyGraph, NetGraph, Égide Vita, StepGraph, ITXView) e para novos produtos do portfólio Vísent.
+**Versão:** 1.1 · **Data:** 2026-08-03 (revisão: acrescenta o capítulo 8, Glossário e Siglas, como capítulo obrigatório) · **Status:** adotado para os produtos da Lounge de Soluções ISP (JourneyGraph, NetGraph, Égide Vita, StepGraph, ITXView) e para novos produtos do portfólio Vísent.
 
 ## 0. Origem e escopo deste documento
 
@@ -24,9 +24,10 @@ Sumário
 5. Use Cases
 Ressalvas / Honestidade Metodológica (capítulo consolidado — ver §3)
 Base Legal / Controle de Acesso a Dado Pessoal (capítulo condicional — ver §4)
+Glossário e Siglas (capítulo obrigatório — ver §8; sempre o último capítulo do documento)
 ```
 
-Os dois últimos capítulos não têm número de bloco fixo (5 ou 6, a depender de o produto ter ou não o capítulo de Base Legal) porque o de Base Legal é condicional — ver §4. Quando presentes, ambos vêm depois de Use Cases, na ordem acima.
+Os capítulos sem número de bloco fixo vêm depois de Use Cases, nesta ordem: Ressalvas (sempre presente — ver §3), Base Legal (condicional — ver §4) e, por fim, Glossário e Siglas, que fecha o documento por definição (ver §8) — inclusive depois de qualquer anexo específico de produto que o documento venha a ter (ex.: os Anexos A–E do JourneyGraph, os Anexos A–C do Égide Vita).
 
 ### 1.1 Bloco 1 — Product Report
 
@@ -166,12 +167,27 @@ Isso é um problema real de fonte não-única (a mesma alegação de fato — "i
 
 ## 7. Aplicação aos produtos existentes
 
-| Produto | Product Report | Tech Reference | Data Reference | Base Metodológica | Use Cases | Ressalvas (2 camadas) | Base Legal | Histórico de Evolução |
-|---|---|---|---|---|---|---|---|---|
-| JourneyGraph | Completo | Completo | Completo | Completo (Anexo B/C) | Completo (Anexo D) | Já pratica as 2 camadas | Já existe (Anexo E) | Já existe (cap. 8) |
-| NetGraph | Completo | Completo | Parcial (corpus cobre só §6) | Completo (§6.4/6.5) | Parcial | Só nota inline — falta consolidação (corrigido no documento gerado) | Já existe (§6.3, formato distinto) | **Reconstruído neste ciclo a partir do git log** |
-| Égide Vita | Completo | Completo | Completo | Completo (Anexo B/C) | Parcial | Já pratica as 2 camadas | Já existe (Anexo C.3) | Já existe (cap. 8) |
-| StepGraph | Básico (o que existe hoje) | Não documentado nesta versão | Não documentado nesta versão | Não documentado nesta versão | Não documentado nesta versão | Não aplicável (sem alegação de método algorítmico) | Não aplicável (sem Consulta Individual) | Reconstruído a partir do git log |
-| ITXView | Enxuto (código-fonte indisponível no repositório — só bundle de produção) | Não verificável contra código-fonte | Não verificável | Parcial (citações cruzadas do JourneyGraph) | Parcial | Não verificável | Não aplicável neste levantamento | Não aplicável (sem histórico de commits específico no repositório) |
+| Produto | Product Report | Tech Reference | Data Reference | Base Metodológica | Use Cases | Ressalvas (2 camadas) | Base Legal | Histórico de Evolução | Glossário e Siglas |
+|---|---|---|---|---|---|---|---|---|---|
+| JourneyGraph | Completo | Completo | Completo | Completo (Anexo B/C) | Completo (Anexo D) | Já pratica as 2 camadas | Já existe (Anexo E) | Já existe (cap. 8) | Completo (38 termos) |
+| NetGraph | Completo | Completo | Parcial (corpus cobre só §6) | Completo (§6.4/6.5) | Parcial | Só nota inline — falta consolidação (corrigido no documento gerado) | Já existe (§6.3, formato distinto) | **Reconstruído neste ciclo a partir do git log** | Completo (24 termos) |
+| Égide Vita | Completo | Completo | Completo | Completo (Anexo B/C) | Parcial | Já pratica as 2 camadas | Já existe (Anexo C.3) | Já existe (cap. 8) | Completo (22 termos) |
+| StepGraph | Básico (o que existe hoje) | Não documentado nesta versão | Não documentado nesta versão | Não documentado nesta versão | Não documentado nesta versão | Não aplicável (sem alegação de método algorítmico) | Não aplicável (sem Consulta Individual) | Reconstruído a partir do git log | Completo, deliberadamente enxuto (6 termos) |
+| ITXView | Enxuto (código-fonte indisponível no repositório — só bundle de produção) | Não verificável contra código-fonte | Não verificável | Parcial (citações cruzadas do JourneyGraph) | Parcial | Não verificável | Não aplicável neste levantamento | Não aplicável (sem histórico de commits específico no repositório) | Completo (14 termos) |
 
 Os cinco documentos gerados junto com este padrão (`docs/produtos/*.docx`) aplicam esta tabela na prática — preenchendo cada bloco com conteúdo real do produto correspondente, e marcando explicitamente "Não documentado nesta versão" onde não há conteúdo real a reportar, em vez de inventar.
+
+---
+
+## 8. Glossário e Siglas — capítulo obrigatório, sempre o último do documento
+
+**Regra:** todo Product Report deve incluir um capítulo "Glossário e Siglas", em ordem alfabética, como o **último capítulo do documento** — depois de Use Cases, de Ressalvas, de Base Legal (quando presente) e de qualquer anexo específico do produto. Cobrindo, cada um com definição de uma linha (duas quando a fórmula/base legal exigir):
+
+1. **Cada indicador/métrica do produto** citado no documento — o que mede, em uma linha, sem repetir a fórmula completa já detalhada no catálogo de indicadores (Tech Reference) ou no Anexo pertinente. O glossário referencia a seção onde a fórmula completa vive; não a duplica (mesma disciplina de fonte única do §6).
+2. **Cada sigla/acrônimo usado no documento** — expandida por extenso, com uma definição curta do que significa no contexto do produto (ex.: FCAPS, SPOF, RQUAL, ARPU, IX.br).
+3. **Cada modelo, técnica estatística ou matemática citada** — K-Means, cadeia de Markov, rede Bayesiana, MAD, regressão linear, Divergência de Jensen-Shannon, centralidade de Brandes, HHI etc. — o que o método faz de fato, em uma linha (complementar à explicação mais longa do Anexo/§4.1 de Base Metodológica, não substituta dela).
+4. **Cada framework ou norma setorial citada** — eTOM, ITU-T, TM Forum, RQUAL, LGPD, NR-1, ECA Digital etc.
+
+**O que este glossário NÃO é:** uma lista genérica de termos de telecom ou de ciência de dados copiada de um glossário externo. **Só entram termos que o documento em questão efetivamente usa** — verificados contra o HTML/corpus fonte do produto (ou, na ausência de código-fonte como no caso do ITXView, contra o próprio texto do documento e as citações cruzadas de outros produtos). Um termo do glossário-base de um produto que não se aplica a outro (ex.: HHI e K-Means, usados no JourneyGraph e no Égide Vita, não aparecem no NetGraph, que não os calcula) deve ser omitido, não incluído "por completude". A tabela do §7 acima registra a contagem de termos que sobreviveu a essa checagem em cada um dos cinco documentos gerados junto com este padrão — StepGraph, o produto mais simples da Lounge, tem propositalmente o menor glossário (6 termos), proporcional ao que o produto de fato implementa nesta versão do repositório.
+
+**Por que é sempre o último capítulo, mesmo depois de anexos específicos do produto:** o glossário é um índice de consulta rápida sobre o documento inteiro — só cumpre essa função se o leitor souber, sem ambiguidade, onde procurá-lo (o fim do documento), independentemente de quantos anexos o produto específico tiver antes dele.
