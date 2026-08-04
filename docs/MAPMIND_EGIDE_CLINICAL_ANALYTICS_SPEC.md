@@ -32,7 +32,7 @@ Estas regras vêm de `[-001 §7 e §10]` e se aplicam **integralmente** a este n
 - O **valor de resposta do item D4.RISK nunca entra na base integrada**, em nenhuma forma (bruta, agregada, derivada, texto, flag). Não existe coluna, tabela, evento ou log que o contenha.
 - **`journal_entries`** (diário terapêutico, E2) e **`beliefs`/crenças em texto livre** (D7.1, D7.2, E8) nunca são sincronizados — nem para a nuvem do próprio MapMind, muito menos para esta base integrada.
 - **Nenhum termo-gatilho de crise** homologado é replicado fora do repositório do MapMind.
-- **Nenhum evento do D4.RISK alimenta correlação, persona, insight automatizado ou relatório** — nem individual nem agregado. Se, no futuro, decidir-se mostrar à profissional que *"houve um evento de risco no período"* (sem conteúdo), isso é uma decisão de produto e ética separada, fora do escopo deste projeto (ver pergunta aberta em `[-001 §12]`) — **não implementar por padrão**.
+- **O valor/conteúdo de resposta do D4.RISK nunca alimenta correlação, persona, insight automatizado, base analítica ou relatório agregado** — nem individual nem coletivo. Isso não impede a *notificação de presença*: `[-001 §7.2]` já especifica que, havendo consentimento e profissional vinculada, o app dispara `POST /risk-alerts` com `{ user_hash, triggered_at, alert_type: "risk_item" }` — presença e horário, nunca o valor. A responsável técnica tem dever de cuidado direto com o paciente; este projeto herda esse canal já existente como **alerta de notificação em tempo real**, mantido deliberadamente **fora da base analítica integrada** (Seção 3.6) — nunca como dado de série histórica correlacionável, nunca em relatório agregado, nunca no painel corporativo do Égide Vita. A pergunta em aberto de `[-001 §12]` ("Alertas... Painel de Alertas do Égide Vita... Recomendação preliminar: não") trata do **painel corporativo** (contexto RH/SESMT, empregador) — público distinto da profissional com vínculo terapêutico consentido. Para o painel corporativo a recomendação "não" permanece; para a profissional responsável, a notificação de presença é apropriada e já prevista no produto.
 - Qualquer dado coletivo/populacional do Égide Vita usado como baseline de comparação deve ser **k-anonimizado** — nunca reidentificável, mesmo combinado com outros filtros do console.
 
 Todo teste de aceite deste projeto deve incluir um teste automatizado negativo — "X nunca aparece em nenhum payload/log/view" — no mesmo espírito dos 21 testes já existentes no D4.RISK do `mapmind-v4` (`[-001 §7.3]`).
@@ -46,6 +46,7 @@ Estende o mapeamento de finalidades de `[-001 §9.2]` com uma finalidade nova:
 | `network` *(já existe)* | Correlação servidor-a-servidor MapMind↔Égide Vita | Paciente | Global, por escore/instrumento |
 | `professional_link` *(nova)* | Vínculo paciente↔profissional específico com validade e escopo | Paciente | Por profissional, por prazo, revogável a qualquer momento |
 | `professional_analytics` *(nova)* | Acesso da profissional vinculada ao console (visualização da base integrada daquele paciente) | Paciente, condicionado a `professional_link` ativo | Por domínio de dado (ex.: pode consentir escores mas não sinais objetivos individuais) |
+| `professional_risk_alert` *(nova)* | Notificação de presença de evento D4.RISK à profissional vinculada — herda `[-001 §7.2]` | Paciente, condicionado a `professional_link` ativo | Binária: liga/desliga por vínculo; não tem granularidade por domínio (é presença, não conteúdo) |
 | `research` *(já existe)* | Uso em baseline coletivo k-anonimizado | Paciente | Agregado, nunca individualizável |
 
 Regras derivadas:
@@ -54,6 +55,7 @@ Regras derivadas:
 - **Dado objetivo coletivo** (baseline populacional) não exige opt-in individual — por definição não é identificável — mas exige que o Égide Vita já o forneça k-anonimizado na origem `[-001 §9.2, linha "research"]`.
 - Revogar `professional_link` revoga em cascata `professional_analytics` para aquele par paciente-profissional, sem apagar histórico de auditoria de acesso já realizado (LGPD exige rastreabilidade do que já foi acessado, mesmo após revogação).
 - Todo consentimento é registrado com: quem, o quê (lista de domínios/fontes), quando, validade, e evento de revogação — nunca "consentimento implícito por uso".
+- `professional_risk_alert` é **independente** de `professional_analytics`: um paciente pode habilitar a notificação de presença de risco à profissional sem habilitar acesso à base analítica completa, e vice-versa. Recomenda-se que o fluxo de criação do `professional_link` apresente `professional_risk_alert` como parte padrão do consentimento de vínculo terapêutico — explicado explicitamente nesse momento, não oculto em termo geral — dado o dever de cuidado da responsável técnica; `professional_analytics` e `network` permanecem opt-in explícito e separado, sem esse padrão.
 
 ### 3. Arquitetura de dados integrada
 
@@ -105,7 +107,7 @@ Regras derivadas:
 - **`persona_assignment`** — persona MM-x (MapMind) e PerfilDeRisco (Égide Vita) lado a lado, por paciente e período — **sem fusão automática** (ver decisão na Seção 3.5).
 - **`access_audit_log`** — todo acesso da profissional a dado de um paciente: quem, quando, o quê, de onde. Imutável (append-only, sem UPDATE/DELETE em nível de aplicação).
 
-Nenhuma entidade contém: valor de D4.RISK, texto de `journal_entries`, texto de `beliefs`, termos-gatilho.
+Nenhuma entidade contém: valor de D4.RISK, texto de `journal_entries`, texto de `beliefs`, termos-gatilho. O evento de risco em si (presença + horário) **não é uma entidade desta base** — ver Seção 3.6.
 
 #### 3.4 Reconciliação de pseudônimos
 
@@ -119,13 +121,24 @@ Nenhuma entidade contém: valor de D4.RISK, texto de `journal_entries`, texto de
 
 `[-001 §5 e §12]` deixa em aberto se as personas MM-1..7 devem se fundir num vetor único com o PerfilDeRisco do Égide Vita. **Proposta deste projeto: manter paralelas na Fase 1.** O console mostra as duas classificações lado a lado e deixa a síntese para a profissional — fundir os dois motores de clusterização é uma mudança de arquitetura em ambos os produtos, exige validação estatística própria (`[-001 §12]`, item "Validação estatística") e não deveria bloquear a entrega do console. Reavaliar fusão como iniciativa de Fase F6+ (Seção 9).
 
+#### 3.6 Canal de alerta de risco — separado da base analítica
+
+Herda `[-001 §7.2]`: o app já dispara `POST /risk-alerts` com `{ user_hash, triggered_at, alert_type: "risk_item" }` quando há consentimento e profissional vinculada. Este projeto consome esse mesmo evento para notificar a profissional em tempo real, mas com isolamento arquitetural deliberado do restante da base:
+
+- **Serviço próprio** (`risk-alert-notifier`), não uma tabela da base integrada — evita que o evento seja acidentalmente incluído em uma query analítica, um `JOIN`, ou um export.
+- Armazena apenas `{ patient_ref, professional_ref, triggered_at }` — sem valor, sem contexto, sem termo-gatilho. Retenção mínima necessária para fins de auditoria de que a notificação foi entregue (não para reconstrução de histórico clínico).
+- Entrega como notificação push/e-mail/painel em tempo real ao profissional vinculado — nunca como linha consultável na timeline do paciente (Seção 4.2.1) nem como insumo do motor de correlação (Seção 4.2.2).
+- **Nunca** tem `JOIN`, chave estrangeira ou pipeline de exportação em comum com `correlation_insight`, `persona_assignment` ou qualquer view analítica.
+- Confirmação de recebimento pela profissional é registrada em `access_audit_log` (Seção 4.1) — não em uma tabela clínica.
+- O protocolo de crise em si (CVV/CAPS/SAMU, mediado por humano) continua **inalterado e no app**, `[-001 §7.2]` — este canal é *adicional*: informa a profissional de que o protocolo foi acionado, não o substitui nem o intermedeia.
+
 ### 4. Console analítico do profissional
 
 #### 4.1 Perfis de acesso (RBAC)
 
 | Papel | Acesso |
 |---|---|
-| Profissional habilitada (ex.: Mirian Noêmia) | Pacientes com `professional_link` ativo consigo; dado conforme `professional_analytics` consentido por domínio |
+| Profissional habilitada (ex.: Mirian Noêmia) | Pacientes com `professional_link` ativo consigo; dado conforme `professional_analytics` consentido por domínio; recebe notificação de risco (Seção 3.6) sob `professional_risk_alert` independentemente de `professional_analytics` |
 | Compliance/auditoria | `access_audit_log` e metadados de consentimento; **nunca** dado clínico bruto |
 | Administrador técnico | Configuração de integrações e saúde do pipeline; **nunca** dado clínico, mesmo agregado |
 
@@ -137,16 +150,18 @@ Toda sessão exige autenticação forte, timeout curto, e cada leitura de dado d
 2. **Exploração da matriz de correlação** — reaproveita as hipóteses de `[-001 §8]` (ex.: D3.1/D6.5↔Vamping, D6.2↔Verificação Compulsiva, D5.1/D5.2↔DCE) e mostra, com dado real daquele paciente, se a correlação hipotética se sustenta — com transparência de que é **observação qualitativa**, não validação estatística populacional (essa é item separado, `[-001 §12]`).
 3. **Comparação com baseline coletivo k-anonimizado** — contextualiza "este padrão está fora do esperado para a população" sem nunca expor outro indivíduo.
 4. **Personas lado a lado** — MM-x e PerfilDeRisco, sem fusão automática (Seção 3.5), com nota explícita de que a leitura integrada é da profissional.
-5. **Régua de encaminhamento** — Verde/Amarelo/Laranja (`[-001 §6]`) apenas. **Vermelho/D4.RISK nunca aparece neste console** — esse protocolo permanece exclusivamente no fluxo já implementado do app (`[-001 §7]`), com CVV/CAPS/SAMU, fora desta ferramenta.
-6. **Trilha de consentimento e auditoria por paciente** — o que está consentido, desde quando, e quem acessou o quê.
+5. **Régua de encaminhamento** — Verde/Amarelo/Laranja (`[-001 §6]`) apenas dentro das telas exploratórias/analíticas (Seção 4.2.1–4.2.4). **Vermelho/D4.RISK não é dado analítico e não aparece nessas telas** — o protocolo de crise em si permanece exclusivamente no fluxo já implementado do app (`[-001 §7]`), com CVV/CAPS/SAMU, mediado por humano, fora desta ferramenta.
+6. **Notificação de risco em tempo real** (não é dado analítico — ver Seção 3.6) — um alerta de presença, separado de qualquer tela exploratória: *"paciente vinculado acionou o protocolo de risco em [data/hora]"*, sem valor, sem contexto, sem histórico consultável. É a materialização, neste console, do dever de cuidado da profissional — herdada de `[-001 §7.2]`, nunca uma funcionalidade analítica.
+7. **Trilha de consentimento e auditoria por paciente** — o que está consentido, desde quando, e quem acessou o quê (inclui confirmações de recebimento do item 6).
 
-#### 4.3 O que o console nunca mostra (lista negativa explícita)
+#### 4.3 O que o console nunca mostra nas telas exploratórias/analíticas (lista negativa explícita)
 
-- Valor de resposta do D4.RISK, sob qualquer forma.
+- Valor de resposta do D4.RISK ou qualquer conteúdo/contexto do evento, sob qualquer forma — a única exposição permitida é a notificação de presença isolada do item 4.2.6, nunca dentro de timeline, matriz de correlação, persona ou export.
 - Conteúdo de `journal_entries` ou `beliefs` em texto livre.
 - Qualquer dado de outro paciente, mesmo agregado, fora de baseline k-anonimizado.
 - Qualquer indicador objetivo individual sem `network` + `professional_analytics` ativos.
 - Persona fundida automaticamente (Seção 3.5) — apenas leitura lado a lado.
+- Evento de risco (Seção 3.6) misturado a qualquer `JOIN`, view ou export analítico.
 
 #### 4.4 Requisitos não funcionais
 
@@ -198,6 +213,7 @@ De `[-001 §12]`, os que bloqueiam ou moldam este projeto:
 - Personas paralelas vs. fundidas — decisão proposta em Seção 3.5, revisitar em F6.
 - Validação estatística da matriz de correlação — quem conduz, quando — **não bloqueia o console, mas molda como a Seção 4.2.2 é rotulada** (hipótese vs. validado).
 - Homologação conjunta de limiares entre régua do MapMind e limiares do Égide Vita — decisão de comitê de ética, fora do escopo de engenharia.
+- **Alertas ao profissional responsável — resolvida por este projeto** (não permanece em aberto): a recomendação preliminar "não" de `[-001 §12]` aplicava-se ao painel corporativo do Égide Vita; para a profissional com vínculo terapêutico e dever de cuidado direto, este projeto adota a notificação de presença já prevista em `[-001 §7.2]`, isolada em canal próprio (Seção 3.6). Validar essa leitura com Mirian Noêmia e com o comitê de ética antes de F0 sign-off, já que envolve dado de saúde sensível mesmo sendo apenas presença/horário.
 
 ---
 
@@ -225,6 +241,7 @@ mapmind-egide-cci/
 │   │   ├── mapmind-connector/
 │   │   └── egide-vita-connector/
 │   ├── identity-resolution/                     # Seção 3.4, isolado
+│   ├── risk-alert-notifier/                     # Seção 3.6 — isolado da base analítica, sem FK/JOIN com ela
 │   ├── correlation-engine/                      # Seção 4.2.2, jobs assíncronos
 │   └── analytics-api/                           # serving layer + RBAC + auditoria
 ├── apps/
@@ -233,7 +250,8 @@ mapmind-egide-cci/
 │   ├── migrations/
 │   └── policies/                                 # RLS policies versionadas
 └── tests/
-    ├── boundary/                                 # testes negativos: D4.RISK/journal/beliefs nunca aparecem
+    ├── boundary/                                 # testes negativos: D4.RISK/journal/beliefs nunca aparecem na base analítica
+    ├── risk-alert-isolation/                     # testes negativos: evento de risco nunca alcançável via analytics-api
     └── consent/                                  # testes de cascata de revogação
 ```
 
@@ -242,7 +260,7 @@ mapmind-egide-cci/
 | Fase | Entrega | Bloqueante para próxima fase |
 |---|---|---|
 | **F0 — Fundamentos** | Modelo de dados final, modelo de consentimento revisado, **sign-off do comitê de ética/compliance** para qualquer piloto com dado real | Sim — nenhuma fase com dado real avança sem isso |
-| **F1 — Ingestão (dado sintético)** | Conectores MapMind + Égide Vita, staging com validação de fronteira, serviço de resolução de identidade | Compatibilidade de pseudonimização resolvida (Seção 5.3) |
+| **F1 — Ingestão (dado sintético)** | Conectores MapMind + Égide Vita, staging com validação de fronteira, serviço de resolução de identidade, `risk-alert-notifier` isolado (Seção 3.6) | Compatibilidade de pseudonimização resolvida (Seção 5.3) |
 | **F2 — Base integrada** | Schema em produção, RLS, testes automatizados de fronteira (D4.RISK/journal/beliefs nunca persistem) | Testes de fronteira 100% verdes |
 | **F3 — Camada analítica** | Motor de correlação, views de persona lado a lado, baseline comparativo | — |
 | **F4 — Console do profissional** | Telas da Seção 4.2, RBAC, auditoria, ainda com dado sintético | Validação de UX com a profissional (Mirian Noêmia) |
@@ -253,8 +271,8 @@ mapmind-egide-cci/
 
 - **F1/F2:** suite `tests/boundary/` cobre — para cada fonte de ingestão — um teste que injeta um payload contendo D4.RISK/journal/beliefs e verifica rejeição antes de tocar a base integrada.
 - **F2:** revogar `professional_link` em teste automatizado deve resultar em zero linhas visíveis daquele paciente para aquela profissional na próxima consulta à API, imediatamente.
-- **F4:** nenhuma tela do console consegue renderizar D4.RISK/journal/beliefs mesmo com dado de teste malicioso injetado propositalmente (teste de UI/E2E dedicado).
-- **F5:** todo acesso da profissional durante o piloto está em `access_audit_log`, verificável por amostragem pelo comitê de ética.
+- **F4:** nenhuma tela do console consegue renderizar D4.RISK/journal/beliefs mesmo com dado de teste malicioso injetado propositalmente (teste de UI/E2E dedicado). Notificação de risco (Seção 3.6) é entregue como alerta isolado, nunca aparece em timeline/matriz/persona/export.
+- **F5:** todo acesso da profissional durante o piloto está em `access_audit_log`, verificável por amostragem pelo comitê de ética, incluindo confirmações de recebimento das notificações de risco.
 
 ### 10. Riscos e mitigações
 
