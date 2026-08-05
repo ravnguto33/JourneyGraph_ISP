@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>JourneyGraph MNO Edition — Vísent CDRView</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -53,6 +55,13 @@ body{font-family:Arial,sans-serif;background:#09111E;color:#E0EAF5;height:100vh;
 #screen-graph{overflow:hidden;}
 #graph-svg{width:100%;height:100%;touch-action:none;}
 .tooltip{position:absolute;pointer-events:none;background:#0C1829;border:1px solid #1E3A5F;border-radius:6px;padding:7px 11px;font-size:13px;color:#E8F4FF;max-width:240px;display:none;z-index:10;}
+
+/* Mapa */
+#screen-map{overflow:hidden !important;}
+#map-leaflet{position:absolute;inset:0;}
+.map-leaflet-tip{background:#0C1829 !important;border:1px solid #2A4A6F !important;color:#E0F4FF !important;font-size:12px !important;box-shadow:none !important;}
+.map-popup-title{font-weight:700;color:#F0F8FF;margin-bottom:4px;font-size:13px;}
+.map-popup-row{font-size:11.5px;color:#A0C8E4;padding:1px 0;}
 
 /* Overview */
 #screen-overview{padding:16px;background:#08111E;}
@@ -144,6 +153,7 @@ body.screen-personas #left-col,
 body.screen-quality #left-col, body.screen-quality #cat-sidebar,
 body.screen-overview #left-col, body.screen-overview #cat-sidebar,
 body.screen-restricted #left-col, body.screen-restricted #cat-sidebar { display:none !important; }
+body.screen-map #left-col, body.screen-map #cat-sidebar { display:none !important; }
 
 /* ── RESPONSIVIDADE ── */
 .sidebar-toggle-btn{display:none;}
@@ -209,6 +219,7 @@ body.screen-restricted #left-col, body.screen-restricted #cat-sidebar { display:
     <div id="nav-tabs">
       <button class="nav-btn active" data-screen="overview">&#128202; Visão Geral</button>
       <button class="nav-btn" data-screen="graph">&#9672; Dígrafo</button>
+      <button class="nav-btn" data-screen="map">&#127758; Mapa</button>
       <button class="nav-btn" data-screen="personas">&#128100; Personas</button>
       <button class="nav-btn" data-screen="quality">&#9670; Qualidade</button>
       <button class="nav-btn" data-screen="alerts">&#9888; Alertas</button>
@@ -241,6 +252,8 @@ body.screen-restricted #left-col, body.screen-restricted #cat-sidebar { display:
       <svg id="graph-svg"></svg>
       <div class="tooltip" id="tooltip"></div>
     </div>
+
+    <div class="screen" id="screen-map"><div id="map-leaflet"></div></div>
 
     <div class="screen" id="screen-personas"><div id="personas-grid" class="personas-grid"></div></div>
 

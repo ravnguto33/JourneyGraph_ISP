@@ -21,6 +21,7 @@ function switchScreen(name){
   _closeAllSidebars();
   if(name==='overview') renderOverview();
   if(name==='graph'){ renderMetrics(); renderGraph(); }
+  if(name==='map'){ renderMetrics(); renderMap(); }
   if(name==='personas') renderPersonas();
   if(name==='quality') renderQuality();
   if(name==='alerts') renderAlerts();
@@ -99,7 +100,7 @@ function renderOverview(){
   html += '<div class="ins-card"><div class="ins-title">&#127758; Clusters com mais assinantes</div>';
   topNodes.forEach(function(n){
     var pct = Math.round(100*n.n_usuarios/m.n_subscribers);
-    html += '<div class="ins-row"><span class="ins-row-label">'+n.id+' <span style="color:#567898">('+n.persona_dominante+' dominante)</span></span>'+
+    html += '<div class="ins-row"><span class="ins-row-label">'+(n.area_nome||n.id)+' <span style="color:#567898">('+n.persona_dominante+' dominante)</span></span>'+
       '<div class="ins-bar-wrap"><div class="ins-bar-fill" style="width:'+pct+'%;background:#E87000"></div></div>'+
       '<span class="ins-val">'+fmtN(n.n_usuarios)+'</span></div>';
   });
@@ -161,7 +162,7 @@ function renderGraph(){
     .on('mouseover', function(ev,d){
       var tt = document.getElementById('tooltip');
       var mix = Object.keys(d.mix).map(function(k){return k+':'+d.mix[k];}).join(' · ');
-      tt.innerHTML = '<b>'+d.id+'</b><br>'+fmtN(d.n_usuarios)+' assinantes<br>Dominante: '+d.persona_dominante+'<br>Mix: '+mix+
+      tt.innerHTML = '<b>'+d.id+' · '+(d.area_nome||'—')+'</b><br>'+fmtN(d.n_usuarios)+' assinantes<br>Dominante: '+d.persona_dominante+'<br>Mix: '+mix+
         '<br>Drop médio: '+fmtPct(d.drop_medio)+'<br>Download total: '+fmtN(Math.round(d.download_gb))+' GB';
       tt.style.display='block';
       tt.style.left = (ev.offsetX+14)+'px'; tt.style.top=(ev.offsetY+10)+'px';
@@ -188,6 +189,47 @@ function renderGraph(){
       node.attr('cx',function(n){return n.x;}).attr('cy',function(n){return n.y;});
       label.attr('x',function(n){return n.x;}).attr('y',function(n){return n.y;});
     });
+}
+
+/* ── Mapa (Leaflet, coordenadas reais das antenas/clusters) ──────── */
+var _leafletMap = null;
+function renderMap(){
+  var el = document.getElementById('map-leaflet');
+  if(!_leafletMap){
+    _leafletMap = L.map(el, { zoomControl: true }).setView(RAW.cidade.centro, RAW.cidade.zoom);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(_leafletMap);
+    _leafletMap._clusterLayer = L.layerGroup().addTo(_leafletMap);
+  } else {
+    _leafletMap._clusterLayer.clearLayers();
+  }
+
+  var maxVol = d3.max(RAW.nodes, function(n){return n.n_usuarios;}) || 1;
+  var rScale = d3.scaleSqrt().domain([0,maxVol]).range([5,32]);
+
+  RAW.nodes.forEach(function(n){
+    if(n.lat==null || n.lon==null) return;
+    var p = PERSONA_MAP[n.persona_dominante];
+    var color = p ? '#'+p.cor_hex : '#567898';
+    var marker = L.circleMarker([n.lat, n.lon], {
+      radius: rScale(n.n_usuarios),
+      color: '#050C16', weight: 1.5,
+      fillColor: color, fillOpacity: 0.75
+    });
+    var mix = Object.keys(n.mix).map(function(k){return k+': '+fmtN(n.mix[k]);}).join('<br>');
+    marker.bindPopup(
+      '<div class="map-popup-title">'+n.id+' · '+(n.area_nome||'Região não identificada')+'</div>'+
+      '<div class="map-popup-row">'+fmtN(n.n_usuarios)+' assinantes · dominante: '+n.persona_dominante+'</div>'+
+      '<div class="map-popup-row">'+mix+'</div>'+
+      '<div class="map-popup-row">Drop médio: '+fmtPct(n.drop_medio)+' · Download: '+fmtN(Math.round(n.download_gb))+' GB</div>',
+      { className: 'map-leaflet-tip' }
+    );
+    marker.addTo(_leafletMap._clusterLayer);
+  });
+
+  setTimeout(function(){ _leafletMap.invalidateSize(); }, 80);
 }
 
 /* ── Personas ─────────────────────────────────────────────────────── */
@@ -319,7 +361,7 @@ function _selectAlertPersona(pid){
   var nodeTop = RAW.nodes.slice().sort(function(a,b){ return (b.mix[pid]||0)-(a.mix[pid]||0); })[0];
   var nDominados = RAW.nodes.filter(function(n){return n.persona_dominante===pid;}).length;
   html += '<div class="alert-sec">4. Quem é afetado</div><div class="alert-body">'+fmtN(p.n)+' assinantes na persona '+pid+
-    (nodeTop? ' · maior concentração absoluta: '+nodeTop.id+' ('+fmtN(nodeTop.mix[pid]||0)+' assinantes desta persona)':'')+
+    (nodeTop? ' · maior concentração absoluta: '+(nodeTop.area_nome||nodeTop.id)+' ('+fmtN(nodeTop.mix[pid]||0)+' assinantes desta persona)':'')+
     ' · persona majoritária em '+nDominados+' de '+RAW.nodes.length+' clusters. Nunca assinante individual fora da Consulta Individual restrita.</div>';
 
   html += '<div class="alert-sec">5. Prioridade</div><div class="alert-body">Gravidade técnica ('+mk.estado_atual+', P(piora)='+fmtPct(mk.p_piora)+') × impacto de negócio ('+fmtN(p.n)+' assinantes, '+fmtPct(p.pct/100)+' da base).</div>';
