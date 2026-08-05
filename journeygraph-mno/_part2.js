@@ -5,6 +5,7 @@ var PERSONA_MAP = {};
 RAW.personas.forEach(function(p){ PERSONA_MAP[p.id] = p; });
 
 var ESTADO_COLOR = { Normal:'#2ECC71', Atencao:'#E8B000', Excecao:'#E87000', Critico:'#FF4444' };
+var REDE_ESTADO_COLOR = { Saudavel:'#2ECC71', Degradado:'#E8B000', Critico:'#E87000', Falha:'#FF4444' };
 
 function fmtN(n){ return Number(n).toLocaleString('pt-BR'); }
 function fmtPct(x){ return (x*100).toFixed(1)+'%'; }
@@ -802,18 +803,26 @@ function renderRede(){
     .attr('stroke-width', function(d){ return d.target.data.tipo==='site' ? 0.6 : 1.5; })
     .attr('d', function(d){ return 'M'+d.source._x+','+d.source._y+' L'+d.target._x+','+d.target._y; });
 
+  function _redeAlerta(d){
+    var grupo = RAW.alertas_rede[d.data.tipo];
+    return grupo ? grupo[d.data.id] : null;
+  }
+
   var node = g.selectAll('circle.rede-node').data(h.descendants()).enter().append('circle')
     .attr('class','rede-node')
     .attr('cx', function(d){return d._x;}).attr('cy', function(d){return d._y;})
     .attr('r', function(d){ return d.data.tipo==='site' ? Math.max(2, rScale(d.data.dados.n_usuarios_est||0)*0.5) : rScale(d.data.dados.n_usuarios_est||0)+4; })
     .attr('fill', function(d){ return REDE_COLOR[d.data.tipo]; })
-    .attr('stroke','#050C16').attr('stroke-width', function(d){ return d.data.tipo==='site' ? 0.5 : 1.5; })
+    .attr('stroke', function(d){ var al = _redeAlerta(d); return al ? REDE_ESTADO_COLOR[al.estado_atual] : '#050C16'; })
+    .attr('stroke-width', function(d){ var al = _redeAlerta(d); return al ? (d.data.tipo==='site'?1.2:2.5) : (d.data.tipo==='site'?0.5:1.5); })
     .style('cursor','pointer')
     .on('click', function(ev,d){ _redeSelectNode(d); });
   node.append('title').text(function(d){
     var dd = d.data.dados;
+    var al = _redeAlerta(d);
     return d.data.id+' ('+d.data.tipo.toUpperCase()+')\n'+fmtN(Math.round(dd.n_usuarios_est||0))+' assinantes (blast radius)'+
-      (dd.drop_medio!=null ? '\nDrop: '+fmtPct(dd.drop_medio) : '');
+      (dd.drop_medio!=null ? '\nDrop: '+fmtPct(dd.drop_medio) : '')+
+      (al ? '\nEstado: '+al.estado_atual+' (P piora='+fmtPct(al.p_piora)+')' : '');
   });
 
   g.selectAll('text.rede-label').data(h.descendants().filter(function(d){return d.data.tipo!=='site';}))
@@ -828,16 +837,25 @@ function renderRede(){
   [['core','Core (1)'],['pgw','PGW/UPF (3)'],['sgw','SGW (6)'],['site','Site físico (213)']].forEach(function(t){
     side += '<div class="rede-legend-item"><span class="rede-legend-dot" style="background:'+REDE_COLOR[t[0]]+'"></span>'+t[1]+'</div>';
   });
+  side += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #16283F;font-size:10px;color:#567898">Borda = estado do alerta (Markov)</div>';
+  ['Saudavel','Degradado','Critico','Falha'].forEach(function(e){
+    side += '<div class="rede-legend-item"><span class="rede-legend-dot" style="background:'+REDE_ESTADO_COLOR[e]+'"></span>'+e+'</div>';
+  });
   side += '</div>';
   side += '<div class="rgj-card" id="rede-detail"></div>';
   side += '<div class="rgj-card"><div class="ins-title" style="margin-bottom:6px">MME/AMF (controle, pool paralelo)</div>'+
-    '<table class="rede-mme-table"><thead><tr><th>MME</th><th>Sites</th><th>Assinantes</th></tr></thead><tbody>';
+    '<table class="rede-mme-table"><thead><tr><th>MME</th><th>Sites</th><th>Assinantes</th><th>Estado</th></tr></thead><tbody>';
   tr.mme.forEach(function(m){
-    side += '<tr><td>'+m.id+'</td><td>'+fmtN(m.n_sites)+'</td><td>'+fmtN(Math.round(m.n_usuarios_est))+'</td></tr>';
+    var al = RAW.alertas_rede.mme[m.id];
+    var color = al ? REDE_ESTADO_COLOR[al.estado_atual] : '#567898';
+    side += '<tr style="cursor:pointer" onclick="_redeSelectMME(\''+m.id+'\')"><td>'+m.id+'</td><td>'+fmtN(m.n_sites)+'</td><td>'+fmtN(Math.round(m.n_usuarios_est))+'</td>'+
+      '<td>'+(al ? '<span class="alert-state" style="background:'+color+'22;color:'+color+';border:1px solid '+color+'">'+al.estado_atual+'</span>' : '—')+'</td></tr>';
   });
   side += '</tbody></table>'+
-    '<div class="rgj-note">'+tr.metodologia+'</div></div>';
+    '<div class="rgj-note">'+tr.metodologia+' '+RAW.alertas_rede.metodologia+'</div></div>';
   document.getElementById('rede-side').innerHTML = side;
+  window._redeMmeData = {};
+  tr.mme.forEach(function(m){ window._redeMmeData[m.id] = m; });
 
   _redeSelectNode(h);
 }
@@ -857,8 +875,30 @@ function _redeSelectNode(d){
     html += '<div style="margin-top:6px;font-size:10px;color:#64748B">Ponto único de falha (SPOF): se este nó falhar, os '+fmtN(dd.n_sites)+' sites downstream ficam sem serviço (~'+fmtN(Math.round(dd.n_usuarios_est))+' assinantes afetados).</div>';
   }
   html += '</div>';
+
+  var grupo = RAW.alertas_rede[d.data.tipo];
+  var al = grupo ? grupo[d.data.id] : null;
+  if(al){
+    var color = REDE_ESTADO_COLOR[al.estado_atual];
+    html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #16283F">';
+    html += '<div class="ins-title" style="margin-bottom:4px">Alerta de rede <span class="alert-state" style="background:'+color+'22;color:'+color+';border:1px solid '+color+'">'+al.estado_atual+'</span></div>';
+    html += '<div style="font-size:11px;color:#8ABEDF;margin-bottom:6px">P(piora) = <b style="color:#E87000">'+fmtPct(al.p_piora)+'</b> · '+fmtN(al.n_transicoes_observadas)+' transições diárias observadas.</div>';
+    html += '<div style="font-size:10px;color:#567898;margin-bottom:4px">Matriz de transição (Markov)</div>';
+    html += _markovTable(al);
+    html += '<div style="font-size:10px;color:#567898;margin:8px 0 4px">Causa provável (Bayes, evidência = correlação real)</div>';
+    al.causas.forEach(function(c){
+      html += '<div class="bayes-row"><span class="bayes-lbl">'+c.nome+'</span>'+
+        '<div class="bayes-bar-wrap"><div class="bayes-bar-fill" style="width:'+(c.posterior*100)+'%"></div></div>'+
+        '<span class="bayes-val">'+fmtPct(c.posterior)+'</span></div>';
+    });
+    html += '</div>';
+  }
+
   var panel = document.getElementById('rede-detail');
   if(panel) panel.innerHTML = html;
+}
+function _redeSelectMME(id){
+  _redeSelectNode({ data: { id: id, tipo: 'mme', dados: window._redeMmeData[id] || {} } });
 }
 
 /* ── Personas ─────────────────────────────────────────────────────── */
