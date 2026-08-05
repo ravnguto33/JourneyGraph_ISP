@@ -23,6 +23,7 @@ function switchScreen(name){
   if(name==='graph'){ renderMetrics(); renderGraph(); }
   if(name==='map'){ renderMetrics(); renderMap(); }
   if(name==='rgjourney') renderRGJourney();
+  if(name==='rede') renderRede();
   if(name==='personas') renderPersonas();
   if(name==='quality') renderQuality();
   if(name==='alerts') renderAlerts();
@@ -747,6 +748,117 @@ function renderRGJourney(){
   side += '</div>';
 
   document.getElementById('rgj-side').innerHTML = side;
+}
+
+/* ── Rede — topologia sintética Core→PGW/UPF→SGW→Sites, visão de
+   Engenharia/Operação (equivalente móvel da hierarquia POP→OLT→PON→CTO
+   do NetGraph). RAW.topologia_rede já vem pronto do pipeline
+   (construir_topologia_rede, porta de construir_topologia_core do v1)
+   — aqui só desenhamos a árvore radial (d3.hierarchy + d3.tree) e
+   calculamos blast radius por clique. ─────────────────────────────── */
+var REDE_COLOR = { core:'#E87000', pgw:'#5AC8FA', sgw:'#7C3AED', site:'#567898' };
+
+function renderRede(){
+  var tr = RAW.topologia_rede;
+  var wrap = document.getElementById('rede-content');
+  wrap.innerHTML = '<div id="rede-svg-wrap"><svg id="rede-svg" viewBox="0 0 900 900"></svg></div><div class="rede-side" id="rede-side"></div>';
+
+  var sitesPorSgw = {};
+  tr.sites.forEach(function(s){ (sitesPorSgw[s.sgw_id] = sitesPorSgw[s.sgw_id]||[]).push(s); });
+  var sgwPorPgw = {};
+  tr.sgw.forEach(function(s){ (sgwPorPgw[s.pgw_upf_id] = sgwPorPgw[s.pgw_upf_id]||[]).push(s); });
+
+  var root = {
+    id: tr.core.id, tipo: 'core', dados: tr.core,
+    children: tr.pgw.map(function(p){
+      return { id: p.id, tipo: 'pgw', dados: p,
+        children: (sgwPorPgw[p.id]||[]).map(function(s){
+          return { id: s.id, tipo: 'sgw', dados: s,
+            children: (sitesPorSgw[s.id]||[]).map(function(site){
+              return { id: site.id, tipo: 'site', dados: site, children: [] };
+            }) };
+        }) };
+    }),
+  };
+
+  var svg = d3.select('#rede-svg');
+  var g = svg.append('g');
+  svg.call(d3.zoom().scaleExtent([0.3,4]).on('zoom', function(ev){ g.attr('transform', ev.transform); }));
+
+  var W=900, H=900, R=420;
+  var h = d3.hierarchy(root);
+  d3.tree().size([2*Math.PI, R])(h);
+  h.each(function(d){
+    var a = d.x - Math.PI/2;
+    d._x = W/2 + d.y*Math.cos(a);
+    d._y = H/2 + d.y*Math.sin(a);
+  });
+
+  var maxUsu = d3.max(h.descendants(), function(d){return d.data.dados.n_usuarios_est||0;}) || 1;
+  var rScale = d3.scaleSqrt().domain([0,maxUsu]).range([3,26]);
+
+  g.selectAll('path.rede-link').data(h.links()).enter().append('path')
+    .attr('fill','none').attr('stroke','#1A3050')
+    .attr('stroke-width', function(d){ return d.target.data.tipo==='site' ? 0.6 : 1.5; })
+    .attr('d', function(d){ return 'M'+d.source._x+','+d.source._y+' L'+d.target._x+','+d.target._y; });
+
+  var node = g.selectAll('circle.rede-node').data(h.descendants()).enter().append('circle')
+    .attr('class','rede-node')
+    .attr('cx', function(d){return d._x;}).attr('cy', function(d){return d._y;})
+    .attr('r', function(d){ return d.data.tipo==='site' ? Math.max(2, rScale(d.data.dados.n_usuarios_est||0)*0.5) : rScale(d.data.dados.n_usuarios_est||0)+4; })
+    .attr('fill', function(d){ return REDE_COLOR[d.data.tipo]; })
+    .attr('stroke','#050C16').attr('stroke-width', function(d){ return d.data.tipo==='site' ? 0.5 : 1.5; })
+    .style('cursor','pointer')
+    .on('click', function(ev,d){ _redeSelectNode(d); });
+  node.append('title').text(function(d){
+    var dd = d.data.dados;
+    return d.data.id+' ('+d.data.tipo.toUpperCase()+')\n'+fmtN(Math.round(dd.n_usuarios_est||0))+' assinantes (blast radius)'+
+      (dd.drop_medio!=null ? '\nDrop: '+fmtPct(dd.drop_medio) : '');
+  });
+
+  g.selectAll('text.rede-label').data(h.descendants().filter(function(d){return d.data.tipo!=='site';}))
+    .enter().append('text')
+    .attr('x', function(d){return d._x;})
+    .attr('y', function(d){return d._y - rScale(d.data.dados.n_usuarios_est||0) - 6;})
+    .attr('text-anchor','middle').attr('font-size', function(d){return d.data.tipo==='core'?12:10;})
+    .attr('font-weight',700).attr('fill','#D0E8FF').style('pointer-events','none')
+    .text(function(d){return d.data.id;});
+
+  var side = '<div class="rgj-card"><div class="ins-title" style="margin-bottom:8px">Legenda</div>';
+  [['core','Core (1)'],['pgw','PGW/UPF (3)'],['sgw','SGW (6)'],['site','Site físico (213)']].forEach(function(t){
+    side += '<div class="rede-legend-item"><span class="rede-legend-dot" style="background:'+REDE_COLOR[t[0]]+'"></span>'+t[1]+'</div>';
+  });
+  side += '</div>';
+  side += '<div class="rgj-card" id="rede-detail"></div>';
+  side += '<div class="rgj-card"><div class="ins-title" style="margin-bottom:6px">MME/AMF (controle, pool paralelo)</div>'+
+    '<table class="rede-mme-table"><thead><tr><th>MME</th><th>Sites</th><th>Assinantes</th></tr></thead><tbody>';
+  tr.mme.forEach(function(m){
+    side += '<tr><td>'+m.id+'</td><td>'+fmtN(m.n_sites)+'</td><td>'+fmtN(Math.round(m.n_usuarios_est))+'</td></tr>';
+  });
+  side += '</tbody></table>'+
+    '<div class="rgj-note">'+tr.metodologia+'</div></div>';
+  document.getElementById('rede-side').innerHTML = side;
+
+  _redeSelectNode(h);
+}
+
+function _redeSelectNode(d){
+  var dd = d.data.dados;
+  var html = '<div class="ins-title" style="margin-bottom:6px">'+d.data.id+' <span style="font-size:10px;color:#8ABEDF">('+d.data.tipo.toUpperCase()+')</span></div>';
+  html += '<div class="rede-node-detail">';
+  html += '<b>Blast radius:</b> '+fmtN(Math.round(dd.n_usuarios_est||0))+' assinantes<br>';
+  if(dd.n_sites!=null) html += '<b>Sites downstream:</b> '+fmtN(dd.n_sites)+'<br>';
+  if(dd.n_setores!=null) html += '<b>Setores:</b> '+fmtN(dd.n_setores)+'<br>';
+  if(dd.drop_medio!=null) html += '<b>Drop médio:</b> '+fmtPct(dd.drop_medio)+'<br>';
+  if(dd.cong_medio!=null) html += '<b>Congestionamento:</b> '+fmtPct(dd.cong_medio)+'<br>';
+  if(dd.vamping_score!=null) html += '<b>Vamping:</b> '+dd.vamping_score.toFixed(1)+'/100<br>';
+  if(dd.area_nome) html += '<b>Região:</b> '+dd.area_nome+'<br>';
+  if(d.data.tipo==='pgw' || d.data.tipo==='sgw'){
+    html += '<div style="margin-top:6px;font-size:10px;color:#64748B">Ponto único de falha (SPOF): se este nó falhar, os '+fmtN(dd.n_sites)+' sites downstream ficam sem serviço (~'+fmtN(Math.round(dd.n_usuarios_est))+' assinantes afetados).</div>';
+  }
+  html += '</div>';
+  var panel = document.getElementById('rede-detail');
+  if(panel) panel.innerHTML = html;
 }
 
 /* ── Personas ─────────────────────────────────────────────────────── */

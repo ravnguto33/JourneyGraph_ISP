@@ -79,6 +79,20 @@ body.screen-graph #iped-filter-group{display:flex !important;}
 .rgj-rank-bar-fill{height:100%;border-radius:2px;}
 .rgj-note{font-size:10.5px;color:#3A6080;margin-top:8px;line-height:1.5;}
 
+/* Rede (topologia Core/PGW/SGW/Sites) */
+#screen-rede{padding:16px;overflow-y:auto;background:#08111E;}
+#rede-content{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
+#rede-svg-wrap{flex:1.6;min-width:380px;background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:8px;}
+#rede-svg{width:100%;height:560px;}
+.rede-side{flex:1;min-width:280px;max-width:400px;}
+.rede-node-detail{font-size:12px;color:#C0DCEE;line-height:1.7;}
+.rede-node-detail b{color:#D0E8FF;}
+.rede-mme-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px;}
+.rede-mme-table th{text-align:left;color:#567898;padding:3px 4px;border-bottom:1px solid #1A3050;font-weight:700;text-transform:uppercase;font-size:9px;}
+.rede-mme-table td{padding:3px 4px;border-bottom:1px solid #0F1E30;color:#A0C8E4;}
+.rede-legend-item{display:flex;align-items:center;gap:6px;padding:2px 0;font-size:11px;color:#A0C8E4;}
+.rede-legend-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;border:1px solid #050C16;}
+
 /* Mapa */
 #screen-map{overflow:hidden !important;}
 #map-leaflet{position:absolute;inset:0;}
@@ -186,6 +200,7 @@ body.screen-overview #left-col, body.screen-overview #cat-sidebar,
 body.screen-restricted #left-col, body.screen-restricted #cat-sidebar { display:none !important; }
 body.screen-map #left-col, body.screen-map #cat-sidebar { display:none !important; }
 body.screen-rgjourney #cat-sidebar { display:none !important; }
+body.screen-rede #cat-sidebar, body.screen-rede #left-col { display:none !important; }
 
 /* ── RESPONSIVIDADE ── */
 .sidebar-toggle-btn{display:none;}
@@ -253,6 +268,7 @@ body.screen-rgjourney #cat-sidebar { display:none !important; }
       <button class="nav-btn" data-screen="graph">&#9672; Dígrafo</button>
       <button class="nav-btn" data-screen="map">&#127758; Mapa</button>
       <button class="nav-btn" data-screen="rgjourney">&#128257; Jornada RG</button>
+      <button class="nav-btn" data-screen="rede">&#128225; Rede</button>
       <button class="nav-btn" data-screen="personas">&#128100; Personas</button>
       <button class="nav-btn" data-screen="quality">&#9670; Qualidade</button>
       <button class="nav-btn" data-screen="alerts">&#9888; Alertas</button>
@@ -329,6 +345,10 @@ body.screen-rgjourney #cat-sidebar { display:none !important; }
 
     <div class="screen" id="screen-rgjourney">
       <div id="rgjourney-content"></div>
+    </div>
+
+    <div class="screen" id="screen-rede">
+      <div id="rede-content"></div>
     </div>
 
     <div class="screen" id="screen-personas"><div id="personas-grid" class="personas-grid"></div></div>
