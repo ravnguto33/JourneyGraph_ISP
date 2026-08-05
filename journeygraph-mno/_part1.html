@@ -56,6 +56,21 @@ body{font-family:Arial,sans-serif;background:#09111E;color:#E0EAF5;height:100vh;
 #graph-svg{width:100%;height:100%;touch-action:none;}
 .tooltip{position:absolute;pointer-events:none;background:#0C1829;border:1px solid #1E3A5F;border-radius:6px;padding:7px 11px;font-size:13px;color:#E8F4FF;max-width:240px;display:none;z-index:10;}
 
+/* Jornada RG */
+#screen-rgjourney{padding:16px;overflow-y:auto;background:#08111E;}
+#rgjourney-content{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
+#rgj-svg-wrap{flex:1.3;min-width:340px;background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:8px;}
+#rgj-svg{width:100%;height:480px;}
+.rgj-side{flex:1;min-width:280px;max-width:380px;}
+.rgj-card{background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:12px;margin-bottom:12px;}
+.rgj-legend-item{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;color:#C0DCEE;}
+.rgj-legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.rgj-rank-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #0A1422;font-size:12px;}
+.rgj-rank-label{flex:1;color:#A0C8E4;}
+.rgj-rank-bar-wrap{width:70px;height:5px;background:#0A1422;border-radius:2px;}
+.rgj-rank-bar-fill{height:100%;border-radius:2px;}
+.rgj-note{font-size:10.5px;color:#3A6080;margin-top:8px;line-height:1.5;}
+
 /* Mapa */
 #screen-map{overflow:hidden !important;}
 #map-leaflet{position:absolute;inset:0;}
@@ -162,6 +177,7 @@ body.screen-quality #left-col, body.screen-quality #cat-sidebar,
 body.screen-overview #left-col, body.screen-overview #cat-sidebar,
 body.screen-restricted #left-col, body.screen-restricted #cat-sidebar { display:none !important; }
 body.screen-map #left-col, body.screen-map #cat-sidebar { display:none !important; }
+body.screen-rgjourney #cat-sidebar { display:none !important; }
 
 /* ── RESPONSIVIDADE ── */
 .sidebar-toggle-btn{display:none;}
@@ -228,6 +244,7 @@ body.screen-map #left-col, body.screen-map #cat-sidebar { display:none !importan
       <button class="nav-btn active" data-screen="overview">&#128202; Visão Geral</button>
       <button class="nav-btn" data-screen="graph">&#9672; Dígrafo</button>
       <button class="nav-btn" data-screen="map">&#127758; Mapa</button>
+      <button class="nav-btn" data-screen="rgjourney">&#128257; Jornada RG</button>
       <button class="nav-btn" data-screen="personas">&#128100; Personas</button>
       <button class="nav-btn" data-screen="quality">&#9670; Qualidade</button>
       <button class="nav-btn" data-screen="alerts">&#9888; Alertas</button>
@@ -262,6 +279,10 @@ body.screen-map #left-col, body.screen-map #cat-sidebar { display:none !importan
     </div>
 
     <div class="screen" id="screen-map"><div id="map-leaflet"></div></div>
+
+    <div class="screen" id="screen-rgjourney">
+      <div id="rgjourney-content"></div>
+    </div>
 
     <div class="screen" id="screen-personas"><div id="personas-grid" class="personas-grid"></div></div>
 

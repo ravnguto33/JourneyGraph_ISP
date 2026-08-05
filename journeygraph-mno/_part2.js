@@ -22,6 +22,7 @@ function switchScreen(name){
   if(name==='overview') renderOverview();
   if(name==='graph'){ renderMetrics(); renderGraph(); }
   if(name==='map'){ renderMetrics(); renderMap(); }
+  if(name==='rgjourney') renderRGJourney();
   if(name==='personas') renderPersonas();
   if(name==='quality') renderQuality();
   if(name==='alerts') renderAlerts();
@@ -66,6 +67,7 @@ function _setPersonaFilter(pid){
     b.classList.toggle('active', b.getAttribute('data-p')===pid);
   });
   if(S.screen==='graph') renderGraph();
+  if(S.screen==='rgjourney') renderRGJourney();
 }
 
 /* ── Metrics (só na aba Dígrafo) ──────────────────────────────────── */
@@ -272,6 +274,99 @@ function renderMap(){
   });
 
   setTimeout(function(){ _leafletMap.invalidateSize(); }, 80);
+}
+
+/* ── Jornada RG (dígrafo de categorias de serviço, equivalente ao
+   SVA→SVA do JourneyGraph ISP — as personas/taxonomia de banda larga
+   fixa não se aplicam ao domínio móvel, então o RG do CDR móvel faz
+   esse papel) ──────────────────────────────────────────────────── */
+var RG_COLOR = {
+  STREAMING:'#E87000', GAMING:'#7C3AED', SOCIAL:'#2ECC71',
+  COMUNICACAO:'#1E90FF', VPN:'#FF4444', OUTROS:'#567898'
+};
+var RG_LABEL = {
+  STREAMING:'Streaming', GAMING:'Gaming', SOCIAL:'Social',
+  COMUNICACAO:'Comunicação', VPN:'VPN/Corporativo', OUTROS:'Outros'
+};
+var RG_ORDER = ['STREAMING','GAMING','SOCIAL','COMUNICACAO','VPN','OUTROS'];
+
+function renderRGJourney(){
+  var jr = RAW.jornada_rg;
+  var data = (S.personaFilter!=='all' && jr.by_persona[S.personaFilter]) ? jr.by_persona[S.personaFilter] : {nodes: jr.nodes, edges: jr.edges};
+
+  var wrap = document.getElementById('rgjourney-content');
+  wrap.innerHTML = '<div id="rgj-svg-wrap"><svg id="rgj-svg" viewBox="0 0 560 480"></svg></div><div class="rgj-side" id="rgj-side"></div>';
+
+  var svg = d3.select('#rgj-svg');
+  var cx=280, cy=230, R=170;
+  var nodeById = {};
+  data.nodes.forEach(function(n,i){
+    var ang = -Math.PI/2 + i*(2*Math.PI/RG_ORDER.length);
+    nodeById[n.id] = { id:n.id, n:n.n, x: cx+R*Math.cos(ang), y: cy+R*Math.sin(ang) };
+  });
+
+  var maxN = d3.max(data.nodes, function(n){return n.n;}) || 1;
+  var rNode = d3.scaleSqrt().domain([0,maxN]).range([16,40]);
+  var maxE = d3.max(data.edges, function(e){return e.n;}) || 1;
+  var wEdge = d3.scaleLinear().domain([0,maxE]).range([1,7]);
+
+  svg.append('defs').append('marker')
+    .attr('id','rgj-arrow').attr('viewBox','0 -5 10 10').attr('refX',14).attr('refY',0)
+    .attr('markerWidth',6).attr('markerHeight',6).attr('orient','auto')
+    .append('path').attr('d','M0,-5L10,0L0,5').attr('fill','#8ABEDF');
+
+  // Arestas curvas (offset perpendicular) para separar visualmente A→B de B→A
+  data.edges.forEach(function(e){
+    var a = nodeById[e.source], b = nodeById[e.target];
+    if(!a || !b) return;
+    var dx=b.x-a.x, dy=b.y-a.y, dist=Math.sqrt(dx*dx+dy*dy);
+    var mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    var offset = 18;
+    var nx=-dy/dist*offset, ny=dx/dist*offset;
+    var pathD = 'M'+a.x+','+a.y+' Q'+(mx+nx)+','+(my+ny)+' '+b.x+','+b.y;
+    var ratio = e.n/maxE;
+    var path = svg.append('path').attr('d', pathD).attr('fill','none')
+      .attr('stroke', RG_COLOR[e.source]).attr('stroke-width', wEdge(e.n))
+      .attr('stroke-opacity', 0.25+ratio*0.55)
+      .attr('marker-end','url(#rgj-arrow)')
+      .style('cursor','pointer');
+    path.append('title').text(RG_LABEL[e.source]+' → '+RG_LABEL[e.target]+': '+fmtN(e.n)+' transições observadas');
+  });
+
+  var nodeSel = svg.selectAll('circle.rgj-node').data(data.nodes).enter().append('circle')
+    .attr('class','rgj-node')
+    .attr('cx', function(n){return nodeById[n.id].x;})
+    .attr('cy', function(n){return nodeById[n.id].y;})
+    .attr('r', function(n){return rNode(n.n);})
+    .attr('fill', function(n){return RG_COLOR[n.id];})
+    .attr('stroke','#050C16').attr('stroke-width',2);
+  nodeSel.append('title').text(function(n){return RG_LABEL[n.id]+': '+fmtN(n.n)+' sessões observadas';});
+
+  svg.selectAll('text.rgj-label').data(data.nodes).enter().append('text')
+    .attr('class','rgj-label')
+    .attr('x', function(n){return nodeById[n.id].x;})
+    .attr('y', function(n){return nodeById[n.id].y - rNode(n.n) - 8;})
+    .attr('text-anchor','middle').attr('font-size',12).attr('font-weight',700)
+    .attr('fill','#D0E8FF').text(function(n){return RG_LABEL[n.id];});
+
+  // Painel lateral: legenda + ranking + nota metodológica
+  var side = '<div class="rgj-card"><div class="ins-title" style="margin-bottom:8px">&#128257; Categorias (RG)</div>';
+  RG_ORDER.forEach(function(rg){
+    side += '<div class="rgj-legend-item"><span class="rgj-legend-dot" style="background:'+RG_COLOR[rg]+'"></span>'+RG_LABEL[rg]+'</div>';
+  });
+  side += '</div>';
+
+  side += '<div class="rgj-card"><div class="ins-title" style="margin-bottom:8px">Ranking por volume'+(S.personaFilter!=='all'?' · '+S.personaFilter:'')+'</div>';
+  data.nodes.slice().sort(function(a,b){return b.n-a.n;}).forEach(function(n){
+    var pct = Math.round(100*n.n/maxN);
+    side += '<div class="rgj-rank-row"><span class="rgj-rank-label">'+RG_LABEL[n.id]+'</span>'+
+      '<div class="rgj-rank-bar-wrap"><div class="rgj-rank-bar-fill" style="width:'+pct+'%;background:'+RG_COLOR[n.id]+'"></div></div>'+
+      '<span style="min-width:44px;text-align:right;color:#D0E8FF">'+fmtN(n.n)+'</span></div>';
+  });
+  side += '<div class="rgj-note">Equivalente ao SVA Ranking do JourneyGraph ISP — como a taxonomia de SVA da banda larga fixa não se aplica ao domínio móvel, RG (categoria de serviço do CDR) faz esse papel aqui. Setas = transição real entre categorias na sequência de cada assinante (não permanência na mesma categoria). Nesta amostra sintética a atribuição de RG é ~uniforme por linha, então os volumes/transições ficam parecidos entre categorias — reflexo do gerador, não um padrão de uso real.</div>';
+  side += '</div>';
+
+  document.getElementById('rgj-side').innerHTML = side;
 }
 
 /* ── Personas ─────────────────────────────────────────────────────── */
