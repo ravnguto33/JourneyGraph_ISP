@@ -468,9 +468,21 @@ function renderGraph(){
     })
     .style('cursor','pointer')
     .call(d3.drag()
-      .on('start', function(ev,d){ if(!ev.active) _simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
-      .on('drag', function(ev,d){ d.fx=ev.x; d.fy=ev.y; })
-      .on('end', function(ev,d){ if(!ev.active) _simulation.alphaTarget(0); }))
+      // Atualiza só o nó arrastado e as arestas ligadas a ele diretamente
+      // no DOM — não reaquece a simulação de forças (alphaTarget/restart),
+      // que faria os demais nós se reacomodarem/deslocarem junto. Os
+      // outros nós ficam fixos; só o nó sob o mouse se move.
+      .on('start', function(ev,d){ d.fx=d.x; d.fy=d.y; })
+      .on('drag', function(ev,d){
+        d.fx = ev.x; d.fy = ev.y;
+        d.x = ev.x; d.y = ev.y;
+        d3.select(this).attr('cx', d.x).attr('cy', d.y);
+        label.filter(function(n){ return n===d; }).attr('x', d.x).attr('y', d.y);
+        link.filter(function(e){ return e.source===d || e.target===d; })
+            .attr('x1', function(e){return e.source.x;}).attr('y1', function(e){return e.source.y;})
+            .attr('x2', function(e){return e.target.x;}).attr('y2', function(e){return e.target.y;});
+      })
+      .on('end', function(){ /* nó permanece fixo onde foi solto */ }))
     .on('mouseover', function(ev,d){
       var tt = document.getElementById('tooltip');
       var mix = Object.keys(d.mix).map(function(k){return k+':'+d.mix[k];}).join(' · ');
