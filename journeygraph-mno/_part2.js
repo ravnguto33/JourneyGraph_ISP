@@ -139,6 +139,11 @@ function renderOverview(){
   html += '<div style="margin-top:8px;font-size:11px;color:#3A6080">Fonte: CDR sintético determinístico (poc_personas_v2/pipeline), não RADIUS/IPFIX. Dados de demonstração — ver aba Assistente para metodologia.</div>';
   html += '</div>';
 
+  html += '<div class="ins-card"><div class="ins-title">&#127772; Vamping (exposição noturna a telas)</div>'+
+    '<div class="ins-big">'+RAW.vamping.resumo.score_medio+'<span style="font-size:16px;color:#567898">/100</span></div>'+
+    '<div class="ins-sub">score médio · '+fmtPct(RAW.vamping.resumo.pct_flag/100)+' dos assinantes com uso frequente na madrugada (≥4 noites/semana) · p90 = '+RAW.vamping.resumo.p90+'</div>'+
+    '<div style="margin-top:8px;font-size:11px;color:#3A6080">Indicador transversal (não é persona) — qualquer uma das 9 personas pode ter vamping alto ou baixo. Ver Personas ou Assistente para metodologia.</div></div>';
+
   html += '</div>';
   document.getElementById('overview-content').innerHTML = html;
 }
@@ -212,7 +217,8 @@ function renderGraph(){
       var tt = document.getElementById('tooltip');
       var mix = Object.keys(d.mix).map(function(k){return k+':'+d.mix[k];}).join(' · ');
       tt.innerHTML = '<b>'+d.id+' · '+(d.area_nome||'—')+'</b><br>'+fmtN(d.n_usuarios)+' assinantes<br>Dominante: '+d.persona_dominante+'<br>Mix: '+mix+
-        '<br>Drop médio: '+fmtPct(d.drop_medio)+'<br>Download total: '+fmtN(Math.round(d.download_gb))+' GB';
+        '<br>Drop médio: '+fmtPct(d.drop_medio)+'<br>Download total: '+fmtN(Math.round(d.download_gb))+' GB'+
+        (d.vamping_score!=null ? '<br>Vamping: '+d.vamping_score+'/100' : '');
       tt.style.display='block';
       tt.style.left = (ev.offsetX+14)+'px'; tt.style.top=(ev.offsetY+10)+'px';
     })
@@ -304,7 +310,8 @@ function renderMap(){
       '<div class="map-popup-title">'+n.id+' · '+(n.area_nome||'Região não identificada')+'</div>'+
       '<div class="map-popup-row">'+fmtN(n.n_usuarios)+' assinantes · dominante: '+n.persona_dominante+'</div>'+
       '<div class="map-popup-row">'+mix+'</div>'+
-      '<div class="map-popup-row">Drop médio: '+fmtPct(n.drop_medio)+' · Download: '+fmtN(Math.round(n.download_gb))+' GB</div>',
+      '<div class="map-popup-row">Drop médio: '+fmtPct(n.drop_medio)+' · Download: '+fmtN(Math.round(n.download_gb))+' GB</div>'+
+      (n.vamping_score!=null ? '<div class="map-popup-row">Vamping: '+n.vamping_score+'/100 ('+n.vamping_pct_flag+'% com uso frequente na madrugada)</div>' : ''),
       { className: 'map-leaflet-tip' }
     );
     marker.addTo(_leafletMap._clusterLayer);
@@ -411,6 +418,7 @@ function renderPersonas(){
   var html = '';
   RAW.personas.forEach(function(p){
     var q = RAW.quality_by_persona.filter(function(x){return x.persona_id===p.id;})[0] || {};
+    var vamp = RAW.vamping.by_persona.filter(function(x){return x.persona_id===p.id;})[0];
     html += '<div class="pc" style="border-left-color:#'+p.cor_hex+'">'+
       '<div class="pc-head"><div class="pc-avatar" style="background:#'+p.cor_hex+'22;border:1px solid #'+p.cor_hex+'">&#128100;</div>'+
       '<div><div class="pc-name">'+p.id+' · '+p.nome+'</div><div class="pc-n">'+fmtN(p.n)+' assinantes ('+p.pct+'%) · confiança média '+fmtPct(p.confianca_media)+'</div></div></div>'+
@@ -418,6 +426,7 @@ function renderPersonas(){
       '<div class="pc-criteria"><b>Inclusão:</b> '+p.criterio_inclusao+'<br><b>Exclusão:</b> '+p.criterio_exclusao+'</div>'+
       '<div class="pc-bar-row"><span class="pc-bar-lbl">Drop médio</span><div class="pc-bar-wrap"><div class="pc-bar-fill" style="width:'+Math.min(100,q.drop_medio*100*6)+'%;background:#FF4444"></div></div><span style="font-size:11px;color:#8ABEDF">'+fmtPct(q.drop_medio||0)+'</span></div>'+
       '<div class="pc-bar-row"><span class="pc-bar-lbl">Download total</span><div class="pc-bar-wrap"><div class="pc-bar-fill" style="width:'+Math.min(100, (q.download_gb_total||0)/100)+'%;background:#1E90FF"></div></div><span style="font-size:11px;color:#8ABEDF">'+fmtN(Math.round(q.download_gb_total||0))+' GB</span></div>'+
+      (vamp ? '<div class="pc-bar-row"><span class="pc-bar-lbl">&#127772; Vamping</span><div class="pc-bar-wrap"><div class="pc-bar-fill" style="width:'+vamp.score_medio+'%;background:#9333EA"></div></div><span style="font-size:11px;color:#8ABEDF">'+vamp.score_medio+'/100 · '+vamp.pct_flag+'% flag</span></div>' : '')+
       '<div style="margin-top:8px;font-size:11px;color:#567898">Qualidade esperada: '+p.qualidade_rede_esperada+'</div>'+
       '</div>';
   });
@@ -551,7 +560,7 @@ function _selectAlertPersona(pid){
 /* ── Assistente (RAG mock por palavras-chave, mesmo padrão do JourneyGraph ISP) ── */
 function renderAssistant(){
   var html = '<div class="asst-suggest">';
-  ['Como são calculadas as personas?','O que é causa provável de um alerta?','Que operadora é essa base?','Como funciona a Consulta Individual?','O que é RAT?'].forEach(function(q){
+  ['Como são calculadas as personas?','O que é causa provável de um alerta?','Que operadora é essa base?','Como funciona a Consulta Individual?','O que é RAT?','O que é Vamping?','Por que Streamer e Gamer são personas separadas?'].forEach(function(q){
     html += '<button class="asst-sugg-btn" onclick="_asstAsk(\''+q.replace(/'/g,"\\'")+'\')">'+q+'</button>';
   });
   html += '</div><div class="asst-log" id="asst-log"><div class="asst-msg bot">Olá! Sou o Assistente do JourneyGraph MNO Edition. Pergunte sobre metodologia, personas, indicadores ou dados. Este é um RAG mock por palavras-chave sobre um corpus estático — não um LLM real.</div></div>'+
@@ -655,6 +664,7 @@ function _rstShowProfile(rec){
     '<div class="rst-profile-row"><span class="k">Drop médio</span><span class="v">'+fmtPct(rec.drop)+'</span></div>'+
     '<div class="rst-profile-row"><span class="k">Chamadas / SMS (total)</span><span class="v">'+fmtN(rec.call)+' / '+fmtN(rec.sms)+'</span></div>'+
     '<div class="rst-profile-row"><span class="k">Dias ativos</span><span class="v">'+rec.dias+' / '+RAW.metadata.n_days+'</span></div>'+
+    (rec.vamp ? '<div class="rst-profile-row"><span class="k">Vamping</span><span class="v">'+rec.vamp.score+'/100'+(rec.vamp.flag?' · flag ativo':'')+'</span></div>' : '')+
     '</div>';
   document.getElementById('rst-result').innerHTML = html;
   _rstRenderAudit();
