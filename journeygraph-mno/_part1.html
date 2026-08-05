@@ -35,6 +35,10 @@ body{font-family:Arial,sans-serif;background:#09111E;color:#E0EAF5;height:100vh;
 .fbtn{display:block;width:100%;text-align:left;background:transparent;border:1px solid #2A4A6F;color:#A0C8E4;font-size:12px;font-family:Arial,sans-serif;padding:4px 10px;border-radius:6px;cursor:pointer;transition:all .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fbtn:hover{border-color:#E87000;color:#E87000;}
 .fbtn.active{background:#E87000;border-color:#E87000;color:#fff;font-weight:700;}
+.sva-num-input{background:#07101C;border:1px solid #2A4A6F;color:#D0E8FF;font-size:11px;padding:3px 5px;border-radius:4px;}
+.sva-num-input::placeholder{color:#3A6080;}
+#edge-filter-group{display:none;}
+body.screen-graph #edge-filter-group{display:flex !important;}
 
 /* ── METRICS STRIP ── */
 #metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:5px 16px;background:#07101C;border-bottom:1px solid #1A3050;flex-shrink:0;}
@@ -266,6 +270,15 @@ body.screen-rgjourney #cat-sidebar { display:none !important; }
       <div class="fb-group">
         <span class="fb-label">Persona</span>
         <div id="persona-filter-buttons"></div>
+      </div>
+      <div class="fb-group" id="edge-filter-group">
+        <span class="fb-label">Trajeto · nº de pessoas</span>
+        <div style="display:flex;gap:4px">
+          <input type="number" id="edge-min-input" class="sva-num-input" placeholder="mín" min="0" style="width:100%">
+          <input type="number" id="edge-max-input" class="sva-num-input" placeholder="máx" min="0" style="width:100%">
+        </div>
+        <button class="fbtn" id="edge-filter-clear-btn" style="text-align:center">Limpar filtro</button>
+        <div id="edge-filter-count" style="font-size:10px;color:#567898"></div>
       </div>
     </div>
   </div>

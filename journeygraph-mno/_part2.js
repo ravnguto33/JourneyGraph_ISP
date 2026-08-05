@@ -1,5 +1,5 @@
 
-var S = { screen: 'overview', personaFilter: 'all' };
+var S = { screen: 'overview', personaFilter: 'all', edgeMin: null, edgeMax: null };
 
 var PERSONA_MAP = {};
 RAW.personas.forEach(function(p){ PERSONA_MAP[p.id] = p; });
@@ -134,7 +134,14 @@ function renderGraph(){
   var nodes = RAW.nodes.map(function(n){ return Object.assign({}, n); });
   var nodeIds = {}; nodes.forEach(function(n){ nodeIds[n.id]=true; });
   var edges = RAW.edges.filter(function(e){ return nodeIds[e.source] && nodeIds[e.target]; })
+    .filter(function(e){
+      return (S.edgeMin==null || e.n_usuarios >= S.edgeMin) &&
+             (S.edgeMax==null || e.n_usuarios <= S.edgeMax);
+    })
     .map(function(e){ return Object.assign({}, e); });
+
+  var countEl = document.getElementById('edge-filter-count');
+  if(countEl) countEl.textContent = fmtN(edges.length)+' de '+fmtN(RAW.edges.length)+' trajetos exibidos';
 
   var maxEdgeVol = d3.max(edges, function(e){return e.n_usuarios;}) || 1;
   var maxNodeVol = d3.max(nodes, function(n){return n.n_usuarios;}) || 1;
@@ -631,4 +638,20 @@ document.addEventListener('DOMContentLoaded', function(){
   buildPersonaFilter();
   renderOverview();
   window.addEventListener('resize', function(){ if(S.screen==='graph') renderGraph(); });
+
+  var minInp = document.getElementById('edge-min-input');
+  var maxInp = document.getElementById('edge-max-input');
+  minInp.addEventListener('input', function(){
+    S.edgeMin = minInp.value===''? null : Math.max(0, parseInt(minInp.value,10));
+    if(S.screen==='graph') renderGraph();
+  });
+  maxInp.addEventListener('input', function(){
+    S.edgeMax = maxInp.value===''? null : Math.max(0, parseInt(maxInp.value,10));
+    if(S.screen==='graph') renderGraph();
+  });
+  document.getElementById('edge-filter-clear-btn').addEventListener('click', function(){
+    minInp.value=''; maxInp.value='';
+    S.edgeMin=null; S.edgeMax=null;
+    if(S.screen==='graph') renderGraph();
+  });
 });
