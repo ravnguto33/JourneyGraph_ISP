@@ -175,6 +175,23 @@ body.screen-graph #iped-filter-group{display:flex !important;}
 
 /* ── ALERTAS ── */
 #screen-alerts{padding:16px;overflow-y:auto;}
+.alerts-view-tabs{display:flex;gap:6px;margin-bottom:12px;}
+.alerts-view-tab{background:#0C1829;border:1px solid #1A3050;color:#8ABEDF;font-size:12px;font-weight:700;padding:7px 14px;border-radius:6px;cursor:pointer;font-family:inherit;}
+.alerts-view-tab.active{background:#1A3050;color:#F0F8FF;border-color:#2A4A6F;}
+.rede-alert-row{background:#0C1829;border:1px solid #1A3050;border-left:3px solid #E87000;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:10px;}
+.rede-alert-row:hover{border-color:#2A4A6F;}
+.rede-alert-row.active{background:#122341;}
+.rede-alert-rank{font-size:16px;font-weight:700;color:#3A6080;min-width:26px;text-align:center;flex-shrink:0;}
+.rede-alert-score{font-size:18px;font-weight:700;min-width:40px;text-align:center;flex-shrink:0;}
+.rede-alert-main{flex:1;min-width:0;}
+.rede-alert-id{font-size:13px;font-weight:700;color:#F0F8FF;}
+.rede-alert-sub{font-size:11px;color:#567898;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rede-score-split{display:flex;gap:16px;flex-wrap:wrap;margin-top:2px;}
+.rede-score-split-item{flex:1;min-width:140px;}
+.rede-score-split-lbl{font-size:11px;color:#8ABEDF;display:flex;justify-content:space-between;}
+.rede-score-split-cap{font-size:9.5px;color:#3A6080;margin-top:2px;}
+.score-bar-wrap{width:100%;height:6px;background:#0A1422;border-radius:3px;margin-top:2px;}
+.score-bar-fill{height:100%;border-radius:3px;}
 .alert-card{background:#0C1829;border:1px solid #1A3050;border-left:3px solid #E87000;border-radius:8px;padding:14px;margin-bottom:12px;}
 .alert-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
 .alert-title{font-size:14px;font-weight:700;color:#F0F8FF;}
@@ -385,6 +402,10 @@ body.screen-outliers #cat-sidebar, body.screen-outliers #left-col { display:none
     <div class="screen" id="screen-quality"><div id="quality-content"></div></div>
 
     <div class="screen" id="screen-alerts">
+      <div class="alerts-view-tabs" id="alerts-view-tabs">
+        <button class="alerts-view-tab active" onclick="_alertsSetView('persona')">Por Persona</button>
+        <button class="alerts-view-tab" onclick="_alertsSetView('rede')">Por Rede (priorizado)</button>
+      </div>
       <div class="alerts-layout">
         <div id="alerts-content" class="alerts-col-main"></div>
         <div id="alerts-side" class="alerts-col-side"></div>

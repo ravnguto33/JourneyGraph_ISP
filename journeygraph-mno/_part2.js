@@ -1309,9 +1309,308 @@ function renderQuality(){
   document.getElementById('quality-content').innerHTML = html;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   Alertas de Rede — priorização combinada (porta de NetGraph §5.1 centra-
+   lidade/SPOF, §5.3 Bayes ingênuo de causa-raiz, §5.5 score combinado
+   gravidade×impacto com CRM/Ouvidoria sintéticos, §7.2 explicabilidade em
+   7 seções). Mesma arquitetura e fórmulas do NetGraph (fixo); tabela de
+   causas/evidências recalibrada para o domínio móvel (sem fibra/OLT —
+   sobrecarga, backhaul, MME, RF legada, energia de site, equipamento
+   ativo) porque as causas do NetGraph são específicas de banda fixa e não
+   se aplicam a rede móvel. Tudo calculado no navegador sobre RAW já
+   embutido (mesmo padrão de Alertas/Rede/Outliers já usado no app). ── */
+function seedRng(str){
+  var h = 1779033703 ^ str.length;
+  for(var i=0;i<str.length;i++){
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h<<13) | (h>>>19);
+  }
+  return function(){
+    h = Math.imul(h ^ (h>>>16), 2246822507);
+    h = Math.imul(h ^ (h>>>13), 3266489909);
+    h ^= h>>>16;
+    return (h>>>0)/4294967296;
+  };
+}
+function randInt(rng,lo,hi){ return lo+Math.floor(rng()*(hi-lo+1)); }
+
+/* Árvore Core→PGW→SGW→Site a partir de RAW.topologia_rede (MME fica fora:
+   é pool paralelo de controle, não faz parte da hierarquia de dados). */
+var REDE_CHILDREN=null, REDE_ALL_IDS=null, _redeSubtreeCache={};
+function _redeBuildTree(){
+  if(REDE_CHILDREN) return;
+  REDE_CHILDREN = {};
+  var tr = RAW.topologia_rede;
+  REDE_CHILDREN[tr.core.id] = tr.pgw.map(function(p){return p.id;});
+  var sgwByPgw = {};
+  tr.sgw.forEach(function(s){ (sgwByPgw[s.pgw_upf_id]=sgwByPgw[s.pgw_upf_id]||[]).push(s.id); });
+  tr.pgw.forEach(function(p){ REDE_CHILDREN[p.id] = sgwByPgw[p.id]||[]; });
+  var sitesBySgw = {};
+  tr.sites.forEach(function(s){ (sitesBySgw[s.sgw_id]=sitesBySgw[s.sgw_id]||[]).push(s.id); });
+  tr.sgw.forEach(function(s){ REDE_CHILDREN[s.id] = sitesBySgw[s.id]||[]; });
+  tr.sites.forEach(function(s){ REDE_CHILDREN[s.id] = []; });
+  REDE_ALL_IDS = [tr.core.id].concat(tr.pgw.map(function(p){return p.id;}))
+    .concat(tr.sgw.map(function(s){return s.id;})).concat(tr.sites.map(function(s){return s.id;}));
+}
+function _redeSubtreeIds(id){
+  if(_redeSubtreeCache[id]) return _redeSubtreeCache[id];
+  var out=[id];
+  (REDE_CHILDREN[id]||[]).forEach(function(c){ out=out.concat(_redeSubtreeIds(c)); });
+  _redeSubtreeCache[id]=out;
+  return out;
+}
+/* Centralidade (§5.1, mesma fórmula fechada do NetGraph): proxy de
+   betweenness numa árvore = tamanho_subárvore(v)×(N−tamanho_subárvore(v)),
+   normalizado 0–100 contra o máximo teórico (N/2)². */
+function _redeCentralityScore(id){
+  _redeBuildTree();
+  var below = _redeSubtreeIds(id).length;
+  var N = REDE_ALL_IDS.length;
+  var raw = below*(N-below);
+  var maxRaw = Math.pow(N/2,2);
+  return Math.round(1000*raw/maxRaw)/10;
+}
+/* SPOF: sem dado de redundância de enlace no dataset — todo nó de
+   agregação (SGW/PGW) é ponto único de falha por construção; sites são
+   folhas (perda de um não isola outros) e MME não entra na árvore. */
+function _redeIsSPOF(tipo){ return tipo==='sgw' || tipo==='pgw'; }
+
+function _redeDadosNo(tipo,id){
+  var tr = RAW.topologia_rede;
+  if(tipo==='site') return tr.sites.filter(function(s){return s.id===id;})[0];
+  if(tipo==='sgw') return tr.sgw.filter(function(s){return s.id===id;})[0];
+  if(tipo==='pgw') return tr.pgw.filter(function(p){return p.id===id;})[0];
+  return null;
+}
+function _redeRegioesDoNo(tipo,id){
+  var tr = RAW.topologia_rede;
+  if(tipo==='site'){
+    var s = _redeDadosNo('site',id);
+    return s && s.area_nome ? [s.area_nome] : [];
+  }
+  var regs = {};
+  tr.sites.forEach(function(s){
+    var pertence = tipo==='sgw' ? s.sgw_id===id : s.pgw_upf_id===id;
+    if(pertence && s.area_nome) regs[s.area_nome]=true;
+  });
+  return Object.keys(regs);
+}
+/* Segmento de alto valor — proxy honesto: o dataset MNO não tem conceito
+   de "cliente corporativo com SLA" (isso é do NetGraph/banda fixa). Em
+   vez de inventar um campo, usa persona_dominante==='P1' (Executivo
+   Mobile, cujos critérios de inclusão já são renda A + flag_flagship) nos
+   clusters servidos pelo nó — mesmo papel de "segmento premium" no score
+   de impacto, com dado real já existente. */
+function _redeSegmentoAltoValor(tipo,id){
+  var clusters = {};
+  if(tipo==='site'){
+    var s = _redeDadosNo('site',id);
+    if(s) clusters[s.cluster]=true;
+  } else {
+    RAW.topologia_rede.sites.forEach(function(s){
+      if((tipo==='sgw'?s.sgw_id:s.pgw_upf_id)===id) clusters[s.cluster]=true;
+    });
+  }
+  return Object.keys(clusters).some(function(cid){
+    var n = RAW.nodes.filter(function(x){return x.id===cid;})[0];
+    return n && n.persona_dominante==='P1';
+  });
+}
+
+/* CRM/Ouvidoria sintéticos por região (mesma técnica do NetGraph §6.2/6.3:
+   volume de reclamação por zona, seedado deterministicamente, reforçado
+   quando há nó em Crítico/Falha na região — correlação intencional, não
+   dado real de CRM). Usado só no eixo de impacto de negócio do score. */
+var CRM_MNO=null;
+function _crmBuild(){
+  if(CRM_MNO) return;
+  CRM_MNO = {};
+  var rng = seedRng('journeygraph-mno-crm-2026');
+  var tr = RAW.topologia_rede;
+  RAW.nodes.forEach(function(n){
+    var regiao = n.area_nome;
+    var base = {lentidao:randInt(rng,3,18), queda_conexao:randInt(rng,2,14), sem_sinal:randInt(rng,1,9)};
+    var ruim = tr.sites.some(function(s){
+      if(s.area_nome!==regiao) return false;
+      var al = RAW.alertas_rede.site[s.id];
+      return al && (al.estado_atual==='Critico' || al.estado_atual==='Falha');
+    });
+    if(ruim){ base.lentidao+=randInt(rng,8,22); base.queda_conexao+=randInt(rng,6,20); base.sem_sinal+=randInt(rng,3,12); }
+    base.total = base.lentidao+base.queda_conexao+base.sem_sinal;
+    CRM_MNO[regiao]=base;
+  });
+}
+function _crmForRegiao(regiao){ _crmBuild(); return CRM_MNO[regiao] || {lentidao:0,queda_conexao:0,sem_sinal:0,total:0}; }
+function _crmTotalParaNo(tipo,id){
+  return _redeRegioesDoNo(tipo,id).reduce(function(s,r){ return s+_crmForRegiao(r).total; }, 0);
+}
+function _redeOuvidoriaRisk(severidadeMedia, crmTotal){
+  var high = crmTotal>=28 && severidadeMedia>=55;
+  var medium = crmTotal>=16 && severidadeMedia>=35;
+  return {level: high?'alto':medium?'medio':'baixo', crmVolume:crmTotal};
+}
+
+function _redeOutlierScoreNode(tipo,id){
+  var serie = RAW.series_rede[tipo] && RAW.series_rede[tipo][id];
+  if(!serie) return 0;
+  var od = robustOutliers(serie.drop_pct), oc = robustOutliers(serie.cong);
+  var mx = Math.max(Math.abs(od.lastZ), Math.abs(oc.lastZ));
+  return Math.max(0, Math.min(100, Math.round(mx*12)));
+}
+
+/* Causas candidatas (§5.3) — recalibradas para rede móvel (não fibra/OLT
+   do NetGraph). Priors: distribuição plausível de incidentes num MNO
+   regional (não aprendida de dados reais — mesma ressalva do NetGraph). */
+var REDE_CAUSES = [
+  {id:'sobrecarga_de_rede',  label:'Sobrecarga de rede (congestionamento)', prior:0.20},
+  {id:'saturacao_backhaul',  label:'Saturação de backhaul',                 prior:0.16},
+  {id:'sinalizacao_mme',     label:'Sinalização MME sobrecarregada',        prior:0.10},
+  {id:'cobertura_rf_legada', label:'Cobertura RF legada (WCDMA/3G)',        prior:0.18},
+  {id:'falha_energia_site',  label:'Falha de energia/backup no site',       prior:0.16},
+  {id:'falha_equipamento',   label:'Falha de equipamento ativo (BBU/RRU)',  prior:0.20},
+];
+/* Likelihood P(evidência=presente|causa) — 8 evidências binárias, mesma
+   estrutura do NetGraph (SPOF, blast pequeno/grande, outlier de
+   qualidade, queda de tráfego, nível do nó) adaptada ao domínio móvel. */
+var REDE_CAUSE_LIKELIHOOD = {
+  sobrecarga_de_rede:   {isSpof:0.20, singleSite:0.35, dropOut:0.55, congOut:0.90, trafQueda:0.05, wideBlast:0.45, siteLvl:0.55, agregLvl:0.45},
+  saturacao_backhaul:   {isSpof:0.45, singleSite:0.30, dropOut:0.75, congOut:0.60, trafQueda:0.15, wideBlast:0.65, siteLvl:0.35, agregLvl:0.70},
+  sinalizacao_mme:      {isSpof:0.15, singleSite:0.20, dropOut:0.70, congOut:0.30, trafQueda:0.10, wideBlast:0.75, siteLvl:0.40, agregLvl:0.55},
+  cobertura_rf_legada:  {isSpof:0.05, singleSite:0.80, dropOut:0.85, congOut:0.25, trafQueda:0.05, wideBlast:0.10, siteLvl:0.90, agregLvl:0.05},
+  falha_energia_site:   {isSpof:0.55, singleSite:0.45, dropOut:0.60, congOut:0.20, trafQueda:0.90, wideBlast:0.50, siteLvl:0.60, agregLvl:0.45},
+  falha_equipamento:    {isSpof:0.50, singleSite:0.55, dropOut:0.80, congOut:0.35, trafQueda:0.65, wideBlast:0.30, siteLvl:0.65, agregLvl:0.40},
+};
+function _redeEvidencia(tipo,id){
+  var serie = RAW.series_rede[tipo] && RAW.series_rede[tipo][id];
+  var dd = _redeDadosNo(tipo,id);
+  var nSites = dd ? (dd.n_sites!=null?dd.n_sites:1) : 1;
+  var subs = dd ? (dd.n_usuarios_est||0) : 0;
+  var dropOut=false, congOut=false, trafQueda=false;
+  if(serie){
+    dropOut = robustOutliers(serie.drop_pct).isOutlierNow;
+    congOut = robustOutliers(serie.cong).isOutlierNow;
+    if(serie.trafego_gb && serie.trafego_gb.length>=6){
+      var t = serie.trafego_gb, half = Math.floor(t.length/2);
+      var baseline = t.slice(0,half).reduce(function(a,b){return a+b;},0)/half;
+      trafQueda = t[t.length-1] < baseline*0.5;
+    }
+  }
+  return {
+    isSpof: _redeIsSPOF(tipo), singleSite: nSites<=1,
+    dropOut: dropOut, congOut: congOut, trafQueda: trafQueda,
+    wideBlast: nSites>=20 || subs>=3000,
+    siteLvl: tipo==='site', agregLvl: tipo==='sgw'||tipo==='pgw',
+  };
+}
+function _redeBayesCauses(tipo,id){
+  var ev = _redeEvidencia(tipo,id);
+  var posts = REDE_CAUSES.map(function(c){
+    var lk = REDE_CAUSE_LIKELIHOOD[c.id], p = c.prior;
+    Object.keys(lk).forEach(function(k){ p *= ev[k] ? lk[k] : (1-lk[k]); });
+    return {id:c.id, label:c.label, raw:p};
+  });
+  var total = posts.reduce(function(s,p){return s+p.raw;},0) || 1e-9;
+  posts.forEach(function(p){ p.prob = p.raw/total; });
+  posts.sort(function(a,b){return b.prob-a.prob;});
+  return {posterior:posts, evidence:ev, top:posts[0]};
+}
+
+function _redeStateScoreVal(estado){ return {Saudavel:0, Degradado:35, Critico:70, Falha:100}[estado]||0; }
+
+/* Score combinado (§5.5): gravidade técnica (estado 40% + Markov 25% +
+   outlier 20% + SPOF 15%) e impacto de negócio (assinantes log-escala 40%
+   + segmento alto valor 20% + CRM 20% + Ouvidoria 20%); score final =
+   média simples dos dois — mesmos pesos e mesma fórmula do NetGraph. */
+function _redeAlertScore(tipo,id){
+  var al = RAW.alertas_rede[tipo][id];
+  var stateScore = _redeStateScoreVal(al.estado_atual);
+  var outlier = _redeOutlierScoreNode(tipo,id);
+  var spof = _redeIsSPOF(tipo);
+  var gravidade = Math.max(0, Math.min(100, Math.round(
+    stateScore*0.40 + al.p_piora*100*0.25 + outlier*0.20 + (spof?100:0)*0.15)));
+
+  var dd = _redeDadosNo(tipo,id);
+  var subs = dd ? (dd.n_usuarios_est||0) : 0;
+  var subsNorm = Math.min(100, Math.round(100*Math.log(1+subs)/Math.log(1+15000)));
+  var altoValor = _redeSegmentoAltoValor(tipo,id);
+  var crmTotal = _crmTotalParaNo(tipo,id);
+  var crmNorm = Math.min(100, Math.round(100*crmTotal/60));
+  var ouv = _redeOuvidoriaRisk(Math.round((stateScore+outlier)/2), crmTotal);
+  var ouvScore = {alto:100, medio:55, baixo:15}[ouv.level];
+  var impacto = Math.max(0, Math.min(100, Math.round(
+    subsNorm*0.40 + (altoValor?100:0)*0.20 + crmNorm*0.20 + ouvScore*0.20)));
+
+  var score = Math.round(gravidade*0.5 + impacto*0.5);
+  return {gravidade:gravidade, impacto:impacto, score:score, outlier:outlier, spof:spof, subs:subs,
+    regioes:_redeRegioesDoNo(tipo,id), altoValor:altoValor, crmTotal:crmTotal, ouvidoria:ouv,
+    centralidade:_redeCentralityScore(id)};
+}
+
+function _redeBuildAlerts(){
+  _redeBuildTree();
+  /* Critério de candidato: NetGraph usa health!=="saudavel" OR outlier alto,
+     mas nesta base "Crítico" virou o estado típico do último dia da janela
+     (efeito da deriva orgânica de 15 dias acumulada — ver metodologia de
+     alertas_rede) — usar "!==Saudavel" sozinho tornaria praticamente todo
+     nó "candidato", o que não prioriza nada. Em vez disso: Falha sempre
+     entra (pior estado); Crítico só entra se também tiver outlier robusto
+     (sinal adicional de anormalidade, não só o patamar já esperado da
+     janela); outlier muito alto entra em qualquer estado. */
+  var out = [];
+  ['site','sgw','pgw'].forEach(function(tipo){
+    Object.keys(RAW.alertas_rede[tipo]).forEach(function(id){
+      var al = RAW.alertas_rede[tipo][id];
+      var outlier = _redeOutlierScoreNode(tipo,id);
+      var candidato = al.estado_atual==='Falha' || outlier>=55 ||
+        (al.estado_atual==='Critico' && outlier>=42);
+      if(candidato){
+        var sc = _redeAlertScore(tipo,id);
+        out.push({id:'AL-'+id, tipo:tipo, nodeId:id, estado:al.estado_atual, pPiora:al.p_piora,
+          bayes:_redeBayesCauses(tipo,id), score:sc});
+      }
+    });
+  });
+  out.sort(function(a,b){ return b.score.score - a.score.score; });
+  return out;
+}
+
+function _redeAcaoRecomendada(causaId){
+  var acts = {
+    sobrecarga_de_rede: 'Avaliar balanceamento de carga entre setores/antenas vizinhas e priorização de tráfego por QCI; monitorar se persiste em horário de pico.',
+    saturacao_backhaul: 'Verificar capacidade do enlace de backhaul (fibra/micro-ondas) do SGW/PGW e avaliar upgrade — ver projeção de saturação na aba Rede.',
+    sinalizacao_mme: 'Checar carga de sinalização (attach/handover) no pool de MME/AMF associado e avaliar redistribuição entre instâncias do pool.',
+    cobertura_rf_legada: 'Inspecionar antena/setor para degradação de RF; avaliar prioridade de migração de tráfego legado (WCDMA/3G) para LTE/5G neste site.',
+    falha_energia_site: 'Acionar equipe de campo para verificar energia comercial/bateria/gerador do site — priorizar por SPOF e assinantes afetados.',
+    falha_equipamento: 'Acionar NOC para diagnóstico remoto do equipamento ativo (BBU/RRU) e, se necessário, abrir chamado com fornecedor.',
+  };
+  return (acts[causaId]||'Encaminhar ao NOC para triagem.') + ' (Nível 1 semi-automático — mesmo padrão de encaminhamento do JourneyGraph.)';
+}
+function _redeNarrativa(a){
+  var anatelNota = (a.estado==='Critico'||a.estado==='Falha')
+    ? ' Esse padrão de degradação prolongada, se não resolvido dentro do prazo de reparo aplicável, pode se relacionar aos indicadores de qualidade do Serviço Móvel Pessoal (SMP) da Anatel (paráfrase para fins de demonstração, ver Assistente).'
+    : '';
+  return 'O elemento '+a.nodeId+' está classificado como '+a.estado+', com '+Math.round(a.bayes.top.prob*100)+
+    '% de probabilidade posterior para a causa "'+a.bayes.top.label+'" (rede Bayesiana) e '+Math.round(a.pPiora*100)+
+    '% de chance de piorar na próxima observação diária (Markov). Afeta ~'+fmtN(Math.round(a.score.subs))+' assinante(s)'+
+    (a.score.altoValor?', incluindo área de alta concentração do perfil Executivo Mobile':'')+
+    '. Score de prioridade '+a.score.score+'/100.'+anatelNota;
+}
+
+var _alertsView = 'persona';
+var _redeAlertsCache = null;
+var _redeAlertSelected = null;
+function _alertsSetView(v){
+  _alertsView = v;
+  document.querySelectorAll('.alerts-view-tab').forEach(function(b,i){
+    b.classList.toggle('active', (v==='persona'&&i===0) || (v==='rede'&&i===1));
+  });
+  renderAlerts();
+}
+
 /* ── Alertas (Bayes/Markov por persona) ──────────────────────────── */
 var _alertSelectedPersona = null;
 function renderAlerts(){
+  if(_alertsView==='rede'){ _renderAlertsRede(); return; }
   var html = '';
   RAW.personas.forEach(function(p){
     var mk = RAW.alerts.markov[p.id];
@@ -1384,6 +1683,73 @@ function _selectAlertPersona(pid){
 
   html += '<div class="alert-sec">7. Narrativa</div><div class="alert-body" style="font-style:italic">"Entre as 4 personas móveis, '+pid+' ('+p.nome+') está em estado '+mk.estado_atual+
     ' com '+fmtN(p.n)+' assinantes. A causa mais provável apontada pela evidência correlacional é '+ (by.causas.slice().sort(function(a,b){return b.posterior-a.posterior;})[0].nome) +'."</div>';
+
+  document.getElementById('alerts-side').innerHTML = html;
+}
+
+function _renderAlertsRede(){
+  var lista = _redeAlertsCache = _redeBuildAlerts();
+  var html = '<div style="font-size:11px;color:#567898;margin-bottom:10px">'+
+    '&#9888; '+lista.length+' alerta(s) priorizado(s) por score combinado de gravidade técnica × impacto de negócio (mesma fórmula do NetGraph, §5.5). Candidatos: nós em Falha, ou em Crítico com outlier robusto adicional (score MAD ≥42/100), ou outlier muito alto (≥55/100) em qualquer estado. Cada alerta é explicável em 7 dimensões: o quê, por quê (Bayes), tendência (Markov), quem é afetado (blast radius), por que essa prioridade, o que fazer, narrativa.</div>';
+  if(!lista.length){
+    html += '<div style="font-size:12px;color:#3A6080">Nenhum nó de rede atingiu o limiar de alerta nesta execução.</div>';
+  }
+  lista.forEach(function(a, i){
+    var color = REDE_ESTADO_COLOR[a.estado];
+    var scoreColor = a.score.score>=70 ? '#FF4444' : a.score.score>=45 ? '#E87000' : '#E8B000';
+    html += '<div class="rede-alert-row" id="rede-alert-row-'+a.id+'" onclick="_redeAlertSelect(\''+a.id+'\')">'+
+      '<div class="rede-alert-rank">#'+(i+1)+'</div>'+
+      '<div class="rede-alert-score" style="color:'+scoreColor+'">'+a.score.score+'</div>'+
+      '<div class="rede-alert-main"><div class="rede-alert-id">'+a.nodeId+' <span class="alert-state" style="background:'+color+'22;color:'+color+';border:1px solid '+color+'">'+a.estado+'</span></div>'+
+      '<div class="rede-alert-sub">'+a.tipo.toUpperCase()+(a.score.spof?' · SPOF':'')+' · '+fmtN(Math.round(a.score.subs))+' assinantes · causa provável: '+a.bayes.top.label+' ('+Math.round(a.bayes.top.prob*100)+'%)</div></div>'+
+      '</div>';
+  });
+  document.getElementById('alerts-content').innerHTML = html;
+  if(lista.length) _redeAlertSelect(lista[0].id);
+  else document.getElementById('alerts-side').innerHTML = '';
+}
+function _redeAlertSelect(alertId){
+  _redeAlertSelected = alertId;
+  document.querySelectorAll('.rede-alert-row').forEach(function(r){ r.classList.toggle('active', r.id==='rede-alert-row-'+alertId); });
+  var a = (_redeAlertsCache||[]).filter(function(x){return x.id===alertId;})[0];
+  if(!a) return;
+  var al = RAW.alertas_rede[a.tipo][a.nodeId];
+  var color = REDE_ESTADO_COLOR[a.estado];
+
+  var html = '<div style="font-size:13px;font-weight:700;color:#F0F8FF;margin-bottom:10px">Explicabilidade — '+a.nodeId+' ('+a.tipo.toUpperCase()+')</div>';
+
+  html += '<div class="alert-sec">1. O quê</div><div class="alert-body">Nó '+a.nodeId+' ('+a.tipo.toUpperCase()+
+    (a.score.regioes.length ? ', '+a.score.regioes.slice(0,2).join('; ')+(a.score.regioes.length>2?'…':'') : '')+
+    ') está em estado <b style="color:'+color+'">'+a.estado+'</b>'+
+    (a.score.outlier>=42 ? ' — padrão estatisticamente atípico (outlier robusto MAD, score '+a.score.outlier+'/100)' : '')+'.</div>';
+
+  html += '<div class="alert-sec">2. Por quê (causa provável — rede Bayesiana)</div>';
+  a.bayes.posterior.slice(0,4).forEach(function(p){
+    html += '<div class="bayes-row"><span class="bayes-lbl">'+p.label+'</span>'+
+      '<div class="bayes-bar-wrap"><div class="bayes-bar-fill" style="width:'+(p.prob*100)+'%"></div></div>'+
+      '<span class="bayes-val">'+fmtPct(p.prob)+'</span></div>';
+  });
+  var evOn = Object.keys(a.bayes.evidence).filter(function(k){return a.bayes.evidence[k];});
+  var evOff = Object.keys(a.bayes.evidence).filter(function(k){return !a.bayes.evidence[k];});
+  html += '<div style="font-size:10px;color:#3A6080;margin-top:4px">Evidências a favor: '+(evOn.join(', ')||'nenhuma')+'. Evidências descartadas: '+(evOff.join(', ')||'nenhuma')+'. Naive Bayes com priors + 8 evidências binárias — tabela plausível, não aprendida de dados reais.</div>';
+
+  html += '<div class="alert-sec">3. Para onde (tendência — Markov)</div><div class="alert-body">P(piorar de '+a.estado+' para um estado pior na próxima observação diária) = <b style="color:#E87000">'+fmtPct(a.pPiora)+'</b>, estimada pela matriz de transição contada da série real deste nó ('+fmtN(al.n_transicoes_observadas)+' transições observadas).</div>';
+
+  html += '<div class="alert-sec">4. Quem é afetado (blast radius)</div><div class="alert-body">~'+fmtN(Math.round(a.score.subs))+' assinante(s) downstream'+
+    (a.score.regioes.length ? ', região(ões): '+a.score.regioes.join(', ') : '')+
+    (a.score.altoValor ? '. Inclui cluster de alta concentração do perfil P1 Executivo Mobile (proxy de segmento premium, sem dado de cliente corporativo no MNO)' : '')+'.'+
+    (a.score.spof ? ' Este elemento é <b style="color:#FF4444">ponto único de falha (SPOF)</b> — sem caminho redundante modelado.' : '')+'</div>';
+
+  html += '<div class="alert-sec">5. Por que essa prioridade</div>';
+  html += '<div class="rede-score-split">';
+  html += '<div class="rede-score-split-item"><div class="rede-score-split-lbl"><span>Gravidade técnica</span><span>'+a.score.gravidade+'/100</span></div><div class="score-bar-wrap"><div class="score-bar-fill" style="width:'+a.score.gravidade+'%;background:#E84040"></div></div><div class="rede-score-split-cap">estado(40%) + Markov(25%) + outlier(20%) + SPOF(15%)</div></div>';
+  html += '<div class="rede-score-split-item"><div class="rede-score-split-lbl"><span>Impacto de negócio</span><span>'+a.score.impacto+'/100</span></div><div class="score-bar-wrap"><div class="score-bar-fill" style="width:'+a.score.impacto+'%;background:#60C0FF"></div></div><div class="rede-score-split-cap">assinantes(40%) + segmento premium(20%) + CRM(20%) + Ouvidoria(20%)</div></div>';
+  html += '</div>';
+  html += '<div style="margin-top:6px;font-size:11px;color:#8ABEDF">Score combinado = 0,5×gravidade + 0,5×impacto = <b style="color:'+(a.score.score>=70?'#FF4444':a.score.score>=45?'#E87000':'#E8B000')+'">'+a.score.score+'</b> · Centralidade estrutural: '+a.score.centralidade+'/100 · CRM: '+a.score.crmTotal+' reclamação(ões) sintética(s) correlacionada(s) na região · Risco de escalonamento à Ouvidoria/Anatel: <b>'+a.score.ouvidoria.level+'</b>.</div>';
+
+  html += '<div class="alert-sec">6. O que fazer</div><div class="alert-body">'+_redeAcaoRecomendada(a.bayes.top.id)+'</div>';
+
+  html += '<div class="alert-sec">7. Narrativa</div><div class="alert-body" style="font-style:italic">"'+_redeNarrativa(a)+'"</div>';
 
   document.getElementById('alerts-side').innerHTML = html;
 }
