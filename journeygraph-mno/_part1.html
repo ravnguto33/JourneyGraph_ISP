@@ -93,6 +93,29 @@ body.screen-graph #iped-filter-group{display:flex !important;}
 .rede-legend-item{display:flex;align-items:center;gap:6px;padding:2px 0;font-size:11px;color:#A0C8E4;}
 .rede-legend-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;border:1px solid #050C16;}
 
+/* Outliers (séries temporais + MAD + Bayesiano recursivo) */
+#screen-outliers{padding:16px;overflow-y:auto;background:#08111E;}
+#outliers-content{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
+.out-node-list{flex:0 0 220px;background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:10px;max-height:640px;overflow-y:auto;}
+.out-node-group-label{font-size:10px;color:#567898;text-transform:uppercase;letter-spacing:.06em;margin:10px 0 4px;}
+.out-node-btn{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;text-align:left;background:none;border:none;color:#A0C8E4;font-size:12px;padding:5px 6px;border-radius:5px;cursor:pointer;font-family:inherit;}
+.out-node-btn:hover{background:#0F1E30;}
+.out-node-btn.active{background:#1A3050;color:#F0F8FF;}
+.out-node-btn .out-flag-dot{width:7px;height:7px;border-radius:50%;background:#FF4444;flex-shrink:0;}
+.out-main{flex:1;min-width:420px;}
+.out-chart-card{background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:12px;margin-bottom:12px;}
+.out-chart-title{font-size:12px;color:#D0E8FF;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;}
+.out-chart-svg{width:100%;height:180px;overflow:visible;}
+.out-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:10.5px;color:#8ABEDF;margin-top:4px;}
+.out-legend-item{display:flex;align-items:center;gap:4px;}
+.out-legend-swatch{width:14px;height:2px;flex-shrink:0;}
+.out-legend-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.out-attr-row{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid #0A1422;font-size:11.5px;line-height:1.5;}
+.out-attr-badge{flex-shrink:0;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:9px;white-space:nowrap;}
+.out-attr-txt{color:#A0C8E4;}
+.out-sens-row{display:flex;align-items:center;gap:8px;font-size:11px;color:#8ABEDF;margin-bottom:10px;}
+.out-sens-row input[type=range]{flex:1;max-width:180px;}
+
 /* Mapa */
 #screen-map{overflow:hidden !important;}
 #map-leaflet{position:absolute;inset:0;}
@@ -201,6 +224,7 @@ body.screen-restricted #left-col, body.screen-restricted #cat-sidebar { display:
 body.screen-map #left-col, body.screen-map #cat-sidebar { display:none !important; }
 body.screen-rgjourney #cat-sidebar { display:none !important; }
 body.screen-rede #cat-sidebar, body.screen-rede #left-col { display:none !important; }
+body.screen-outliers #cat-sidebar, body.screen-outliers #left-col { display:none !important; }
 
 /* ── RESPONSIVIDADE ── */
 .sidebar-toggle-btn{display:none;}
@@ -269,6 +293,7 @@ body.screen-rede #cat-sidebar, body.screen-rede #left-col { display:none !import
       <button class="nav-btn" data-screen="map">&#127758; Mapa</button>
       <button class="nav-btn" data-screen="rgjourney">&#128257; Jornada RG</button>
       <button class="nav-btn" data-screen="rede">&#128225; Rede</button>
+      <button class="nav-btn" data-screen="outliers">&#128200; Outliers</button>
       <button class="nav-btn" data-screen="personas">&#128100; Personas</button>
       <button class="nav-btn" data-screen="quality">&#9670; Qualidade</button>
       <button class="nav-btn" data-screen="alerts">&#9888; Alertas</button>
@@ -349,6 +374,10 @@ body.screen-rede #cat-sidebar, body.screen-rede #left-col { display:none !import
 
     <div class="screen" id="screen-rede">
       <div id="rede-content"></div>
+    </div>
+
+    <div class="screen" id="screen-outliers">
+      <div id="outliers-content"></div>
     </div>
 
     <div class="screen" id="screen-personas"><div id="personas-grid" class="personas-grid"></div></div>

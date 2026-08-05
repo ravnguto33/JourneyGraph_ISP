@@ -89,6 +89,7 @@ function switchScreen(name){
   if(name==='map'){ renderMetrics(); renderMap(); }
   if(name==='rgjourney') renderRGJourney();
   if(name==='rede') renderRede();
+  if(name==='outliers') renderOutliers();
   if(name==='personas') renderPersonas();
   if(name==='quality') renderQuality();
   if(name==='alerts') renderAlerts();
@@ -1020,6 +1021,227 @@ function _redeCapacidadeOutliersHtml(tipo, id){
 
   html += '</div>';
   return html;
+}
+
+/* ── Outliers — séries temporais + duas técnicas de detecção lado a
+   lado: MAD (já usada na Rede/Etapa 3) e um filtro Bayesiano recursivo
+   (modelo local-level / filtro de Kalman) descrito no material de
+   apoio da apresentação: θk = argmax p(θ|y1..yk) resolvido de forma
+   recursiva a cada novo dado, com um único parâmetro de sensibilidade
+   e classificação do erro de predição em anomalia fraca/forte via
+   z-score — para um modelo linear-gaussiano local-level, esse MAP
+   recursivo é exatamente a média a posteriori do filtro de Kalman, daí
+   a implementação abaixo. Quando um outlier é detectado, tenta atribuir
+   a causa comparando com o outlier (ou não) do tráfego no mesmo dia:
+   pico de tráfego junto = variação de demanda; sem pico de tráfego =
+   possível variação de capacidade (falha); qualidade melhor com
+   tráfego maior = possível expansão (heurística, não evento real). ── */
+function _variance(arr){
+  var m = arr.reduce(function(a,b){return a+b;},0)/arr.length;
+  return arr.reduce(function(s,v){return s+(v-m)*(v-m);},0)/arr.length;
+}
+/* Estimador de ruído por diferenças sucessivas (von Neumann): a variância
+   bruta da série fica contaminada pela própria tendência/sazonalidade que
+   se quer detectar como anomalia (uma série com deriva tem variância alta
+   mesmo sem nenhum ponto "estranho"). Diferenças dia-a-dia cancelam a
+   tendência lenta e sobra majoritariamente o ruído real — estimador padrão
+   para ruído de observação num modelo local-level. */
+function _successiveDiffVariance(arr){
+  if(arr.length<2) return _variance(arr) || 1e-6;
+  var s=0;
+  for(var i=1;i<arr.length;i++){ s += (arr[i]-arr[i-1])*(arr[i]-arr[i-1]); }
+  return s/(arr.length-1)/2;
+}
+function bayesianRecursiveOutliers(series, sensibilidade){
+  sensibilidade = sensibilidade || 0.05;
+  var R = _successiveDiffVariance(series) || 1e-6;  // ruído de observação
+  var Q = R * sensibilidade;           // ruído de processo — único parâmetro ajustável
+  var mu = series[0], P = R;
+  var out = [];
+  for(var k=0;k<series.length;k++){
+    var muPred = mu, pPred = P + Q;
+    var e = series[k] - muPred;
+    var S = pPred + R;
+    var z = S>0 ? e/Math.sqrt(S) : 0;
+    var K = S>0 ? pPred/S : 0;
+    mu = muPred + K*e;
+    P = (1-K)*pPred;
+    var classe = Math.abs(z)>3 ? 'forte' : (Math.abs(z)>2 ? 'fraca' : 'normal');
+    out.push({ dia:k, valor:series[k], nivelPrevisto:muPred, banda: Math.sqrt(S), z:z, classe:classe });
+  }
+  return out;
+}
+var OUT_SENSIBILIDADE_DEFAULT = 0.05;
+var _outSelected = { tipo:'sgw', id:'SGW-01' };
+var _outSensibilidade = OUT_SENSIBILIDADE_DEFAULT;
+
+function _outAtribuirCausa(zQualidade, zTrafego){
+  if(Math.abs(zQualidade) <= 2) return null;
+  var piorou = zQualidade > 0;
+  var trafegoAlto = zTrafego > 1.5;
+  if(piorou && trafegoAlto){
+    return {tipo:'trafego', label:'Tráfego ↑', cor:'#1E90FF',
+      texto:'Coincide com pico de tráfego no mesmo dia (z='+zTrafego.toFixed(1)+') — provável variação de demanda (mais uso/fontes), não falha de equipamento.'};
+  }
+  if(piorou && !trafegoAlto){
+    return {tipo:'capacidade_falha', label:'Capacidade ↓', cor:'#FF4444',
+      texto:'Sem pico de tráfego correspondente (z='+zTrafego.toFixed(1)+') — degradação não explicada por demanda; possível redução de capacidade (falha/degradação).'};
+  }
+  if(!piorou && trafegoAlto){
+    return {tipo:'capacidade_exp', label:'Capacidade ↑ (heurística)', cor:'#2ECC71',
+      texto:'Qualidade melhorou apesar do tráfego em alta (z='+zTrafego.toFixed(1)+') — heurística de possível expansão de capacidade; não há evento real de expansão no dataset, tratar como hipótese.'};
+  }
+  return {tipo:'indeterminado', label:'Indeterminado', cor:'#567898',
+    texto:'Melhora sem correspondência clara de tráfego nesta amostra — padrão não conclusivo.'};
+}
+
+function _outListaNos(){
+  var tr = RAW.topologia_rede;
+  var lista = { sgw: tr.sgw.map(function(s){return s.id;}).sort(),
+                pgw: tr.pgw.map(function(p){return p.id;}).sort(),
+                site: [] };
+  var sites = RAW.series_rede.site;
+  Object.keys(sites).sort().forEach(function(id){
+    var s = sites[id];
+    var od = robustOutliers(s.drop_pct), oc = robustOutliers(s.cong);
+    if(od.isOutlierNow || oc.isOutlierNow) lista.site.push(id);
+  });
+  return lista;
+}
+
+function renderOutliers(){
+  var wrap = document.getElementById('outliers-content');
+  var lista = _outListaNos();
+  window._outLista = lista;
+
+  var listHtml = '<div class="out-node-list">';
+  listHtml += '<div class="out-node-group-label">SGW (6)</div>';
+  lista.sgw.forEach(function(id){ listHtml += _outNodeBtnHtml('sgw', id); });
+  listHtml += '<div class="out-node-group-label">PGW/UPF (3)</div>';
+  lista.pgw.forEach(function(id){ listHtml += _outNodeBtnHtml('pgw', id); });
+  listHtml += '<div class="out-node-group-label">Sites sinalizados ('+lista.site.length+' de '+Object.keys(RAW.series_rede.site).length+', outlier MAD em drop ou congestionamento)</div>';
+  if(!lista.site.length) listHtml += '<div style="font-size:11px;color:#3A6080;padding:4px 6px">Nenhum site com outlier MAD detectado nesta execução.</div>';
+  lista.site.forEach(function(id){ listHtml += _outNodeBtnHtml('site', id); });
+  listHtml += '</div>';
+
+  wrap.innerHTML = listHtml + '<div class="out-main" id="out-main"></div>';
+  _outRenderMain();
+}
+function _outNodeBtnHtml(tipo, id){
+  var ativo = (_outSelected.tipo===tipo && _outSelected.id===id);
+  return '<button class="out-node-btn'+(ativo?' active':'')+'" onclick="_outSelecionar(\''+tipo+'\',\''+id+'\')">'+
+    '<span>'+id+'</span>'+(tipo==='site' ? '<span class="out-flag-dot"></span>' : '')+'</button>';
+}
+function _outSelecionar(tipo, id){
+  _outSelected = {tipo:tipo, id:id};
+  document.querySelectorAll('.out-node-btn').forEach(function(b){ b.classList.remove('active'); });
+  renderOutliers();
+}
+function _outSetSensibilidade(v){
+  _outSensibilidade = parseFloat(v);
+  _outRenderMain();
+}
+
+var OUT_INDICADORES = [
+  {campo:'trafego_gb', label:'Tráfego (GB/dia)', cor:'#1E90FF'},
+  {campo:'drop_pct',   label:'Drop (%)',          cor:'#FF4444', pct:true},
+  {campo:'cong',       label:'Congestionamento (%)', cor:'#E87000', pct:true},
+];
+
+function _outRenderMain(){
+  var main = document.getElementById('out-main');
+  if(!main) return;
+  var serie = RAW.series_rede[_outSelected.tipo][_outSelected.id];
+  if(!serie){ main.innerHTML = '<div style="color:#567898;font-size:12px">Sem série disponível para este nó.</div>'; return; }
+
+  var html = '<div class="out-chart-card">';
+  html += '<div class="ins-title" style="margin-bottom:4px">'+_outSelected.id+' <span style="font-size:10px;color:#8ABEDF">('+_outSelected.tipo.toUpperCase()+') · 15 dias</span></div>';
+  html += '<div class="out-sens-row">Sensibilidade do filtro Bayesiano (Q/R): <b id="out-sens-val">'+_outSensibilidade.toFixed(3)+'</b>'+
+    '<input type="range" min="0.005" max="0.30" step="0.005" value="'+_outSensibilidade+'" '+
+    'oninput="document.getElementById(\'out-sens-val\').textContent=parseFloat(this.value).toFixed(3)" '+
+    'onchange="_outSetSensibilidade(this.value)">'+
+    '<span style="font-size:10px;color:#3A6080">menor = mais sensível (flags mais fáceis) · maior = mais tolerante (absorve variação como normal)</span>';
+  html += '</div>';
+  html += '</div>';
+
+  var trafegoBayes = bayesianRecursiveOutliers(serie.trafego_gb, _outSensibilidade);
+  var atribuicoesTodas = [];
+
+  OUT_INDICADORES.forEach(function(ind){
+    if(!serie[ind.campo]) return;
+    var vals = serie[ind.campo];
+    var mad = robustOutliers(vals);
+    var bayes = ind.campo==='trafego_gb' ? trafegoBayes : bayesianRecursiveOutliers(vals, _outSensibilidade);
+
+    html += '<div class="out-chart-card">';
+    html += '<div class="out-chart-title">'+ind.label+'</div>';
+    html += _outChartSvg(serie.dias, vals, mad, bayes, ind.cor, ind.pct);
+    html += '<div class="out-legend">'+
+      '<span class="out-legend-item"><span class="out-legend-swatch" style="background:'+ind.cor+'"></span>valor observado</span>'+
+      '<span class="out-legend-item"><span class="out-legend-swatch" style="background:#8ABEDF;opacity:.6"></span>nível previsto (Bayesiano)</span>'+
+      '<span class="out-legend-item"><span class="out-legend-dot" style="background:#FF4444;border:1px solid #fff"></span>outlier MAD (|z|&gt;3.5)</span>'+
+      '<span class="out-legend-item"><span class="out-legend-dot" style="background:none;border:2px solid #F0C000"></span>anomalia fraca (Bayes, |z|&gt;2)</span>'+
+      '<span class="out-legend-item"><span class="out-legend-dot" style="background:none;border:2px solid #FF4444"></span>anomalia forte (Bayes, |z|&gt;3)</span>'+
+      '</div>';
+
+    if(ind.campo !== 'trafego_gb'){
+      bayes.forEach(function(pt, i){
+        var causa = _outAtribuirCausa(pt.z, trafegoBayes[i].z);
+        if(causa) atribuicoesTodas.push({dia:i, data:serie.dias[i], indicador:ind.label, classe:pt.classe, causa:causa});
+      });
+    }
+    html += '</div>';
+  });
+
+  html += '<div class="out-chart-card"><div class="out-chart-title">Atribuição de causa (tráfego × capacidade)</div>';
+  if(!atribuicoesTodas.length){
+    html += '<div style="font-size:11px;color:#3A6080">Nenhuma anomalia de qualidade (Bayes, |z|&gt;2) neste nó com a sensibilidade atual.</div>';
+  } else {
+    atribuicoesTodas.sort(function(a,b){return a.dia-b.dia;}).forEach(function(a){
+      html += '<div class="out-attr-row"><span class="out-attr-badge" style="background:'+a.causa.cor+'22;color:'+a.causa.cor+';border:1px solid '+a.causa.cor+'">'+a.causa.label+'</span>'+
+        '<span class="out-attr-txt"><b style="color:#D0E8FF">'+a.data+' · '+a.indicador+'</b> ('+a.classe+') — '+a.causa.texto+'</span></div>';
+    });
+  }
+  html += '<div class="rgj-note">Heurística de atribuição: compara o z-score do filtro Bayesiano no indicador de qualidade com o z-score do mesmo dia no tráfego do próprio nó — não é uma causa diagnosticada, é uma correspondência estatística entre séries já reais do dataset (sem dado externo de falha/expansão, que não existe nesta base sintética).</div>';
+  html += '</div>';
+
+  main.innerHTML = html;
+}
+
+function _outChartSvg(dias, vals, mad, bayes, cor, isPct){
+  var W=680, H=170, padL=36, padR=8, padT=10, padB=18;
+  var n = vals.length;
+  var x = function(i){ return padL + (W-padL-padR) * (n<=1?0:i/(n-1)); };
+  var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  var bandLo = Math.min.apply(null, bayes.map(function(p){return p.nivelPrevisto-p.banda;}));
+  var bandHi = Math.max.apply(null, bayes.map(function(p){return p.nivelPrevisto+p.banda;}));
+  lo = Math.min(lo, bandLo); hi = Math.max(hi, bandHi);
+  var pad = (hi-lo)*0.1 || 1;
+  lo -= pad; hi += pad;
+  var y = function(v){ return H-padB - (H-padT-padB) * (hi<=lo?0.5:(v-lo)/(hi-lo)); };
+  var fmt = function(v){ return isPct ? (v*100).toFixed(1)+'%' : v.toFixed(1); };
+
+  var bandPath = 'M'+bayes.map(function(p,i){return x(i)+','+y(p.nivelPrevisto+p.banda);}).join(' L')+
+    ' L'+bayes.slice().reverse().map(function(p,i){var idx=bayes.length-1-i; return x(idx)+','+y(p.nivelPrevisto-p.banda);}).join(' L')+' Z';
+  var linePath = 'M'+vals.map(function(v,i){return x(i)+','+y(v);}).join(' L');
+  var predPath = 'M'+bayes.map(function(p,i){return x(i)+','+y(p.nivelPrevisto);}).join(' L');
+
+  var svg = '<svg class="out-chart-svg" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">';
+  svg += '<text x="2" y="'+(y(hi)+4)+'" font-size="9" fill="#3A6080">'+fmt(hi)+'</text>';
+  svg += '<text x="2" y="'+(y(lo)+4)+'" font-size="9" fill="#3A6080">'+fmt(lo)+'</text>';
+  svg += '<path d="'+bandPath+'" fill="#8ABEDF" opacity="0.12" stroke="none"/>';
+  svg += '<path d="'+predPath+'" fill="none" stroke="#8ABEDF" stroke-width="1.2" stroke-dasharray="3 2" opacity="0.7"/>';
+  svg += '<path d="'+linePath+'" fill="none" stroke="'+cor+'" stroke-width="2"/>';
+  vals.forEach(function(v,i){
+    var madOut = mad.isOutlier[i];
+    var bClasse = bayes[i].classe;
+    var r = madOut ? 4.5 : (bClasse!=='normal' ? 4 : 2.5);
+    svg += '<circle cx="'+x(i)+'" cy="'+y(v)+'" r="'+r+'" fill="'+(madOut?'#FF4444':cor)+'" '+
+      (bClasse==='forte' ? 'stroke="#FF4444" stroke-width="2"' : bClasse==='fraca' ? 'stroke="#F0C000" stroke-width="2"' : 'stroke="#050C16" stroke-width="1"')+'>'+
+      '<title>'+dias[i]+': '+fmt(v)+(madOut?' · outlier MAD':'')+(bClasse!=='normal'?' · Bayes '+bClasse+' (z='+bayes[i].z.toFixed(2)+')':'')+'</title></circle>';
+  });
+  svg += '</svg>';
+  return svg;
 }
 
 /* ── Personas ─────────────────────────────────────────────────────── */
