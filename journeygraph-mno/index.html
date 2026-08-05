@@ -533,10 +533,40 @@ function renderMap(){
       maxZoom: 18,
       attribution: '&copy; OpenStreetMap'
     }).addTo(_leafletMap);
+    _leafletMap._edgeLayer = L.layerGroup().addTo(_leafletMap);
     _leafletMap._clusterLayer = L.layerGroup().addTo(_leafletMap);
   } else {
+    _leafletMap._edgeLayer.clearLayers();
     _leafletMap._clusterLayer.clearLayers();
   }
+
+  var nodeById = {};
+  RAW.nodes.forEach(function(n){ nodeById[n.id] = n; });
+
+  // Trajetos (arestas) — mesma origem de dado do Dígrafo (RAW.edges),
+  // mas desenhados nas coordenadas geográficas reais em vez do layout de
+  // forças. Espessura proporcional ao nº de assinantes que se deslocaram.
+  var maxEdgeVol = d3.max(RAW.edges, function(e){return e.n_usuarios;}) || 1;
+  var edgeWeight = d3.scaleLinear().domain([0, maxEdgeVol]).range([1, 9]);
+  RAW.edges.forEach(function(e){
+    var a = nodeById[e.source], b = nodeById[e.target];
+    if(!a || !b || a.lat==null || b.lat==null) return;
+    var line = L.polyline([[a.lat,a.lon],[b.lat,b.lon]], {
+      color: '#E87000',
+      weight: edgeWeight(e.n_usuarios),
+      opacity: 0.55
+    });
+    line.bindPopup(
+      '<div class="map-popup-title">'+(e.area_origem||a.id)+' &#8594; '+(e.area_destino||b.id)+'</div>'+
+      '<div class="map-popup-row">'+fmtN(e.n_usuarios)+' assinantes deslocados · '+fmtN(e.n_viagens)+' viagens</div>'+
+      '<div class="map-popup-row">Distância média: '+e.dist_km+' km · período predominante: '+e.periodo_predominante+'</div>'+
+      '<div class="map-popup-row">RAT dominante: '+e.rat_dominante+'</div>',
+      { className: 'map-leaflet-tip' }
+    );
+    line.on('mouseover', function(){ line.setStyle({opacity:0.95, weight: edgeWeight(e.n_usuarios)+2}); });
+    line.on('mouseout', function(){ line.setStyle({opacity:0.55, weight: edgeWeight(e.n_usuarios)}); });
+    line.addTo(_leafletMap._edgeLayer);
+  });
 
   var maxVol = d3.max(RAW.nodes, function(n){return n.n_usuarios;}) || 1;
   var rScale = d3.scaleSqrt().domain([0,maxVol]).range([5,32]);
