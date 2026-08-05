@@ -741,14 +741,17 @@ function renderRGJourney(){
     .append('path').attr('d','M0,-5L10,0L0,5').attr('fill','#8ABEDF');
 
   // Arestas curvas (offset perpendicular) para separar visualmente A→B de B→A
-  data.edges.forEach(function(e){
-    var a = nodeById[e.source], b = nodeById[e.target];
-    if(!a || !b) return;
-    var dx=b.x-a.x, dy=b.y-a.y, dist=Math.sqrt(dx*dx+dy*dy);
+  function _rgjEdgeD(a, b){
+    var dx=b.x-a.x, dy=b.y-a.y, dist=Math.sqrt(dx*dx+dy*dy) || 1;
     var mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
     var offset = 18;
     var nx=-dy/dist*offset, ny=dx/dist*offset;
-    var pathD = 'M'+a.x+','+a.y+' Q'+(mx+nx)+','+(my+ny)+' '+b.x+','+b.y;
+    return 'M'+a.x+','+a.y+' Q'+(mx+nx)+','+(my+ny)+' '+b.x+','+b.y;
+  }
+  data.edges.forEach(function(e){
+    var a = nodeById[e.source], b = nodeById[e.target];
+    if(!a || !b) return;
+    var pathD = _rgjEdgeD(a, b);
     var ratio = e.n/maxE;
     var baseOpacity = 0.25+ratio*0.55;
     var path = svg.append('path').attr('d', pathD).attr('fill','none')
@@ -768,7 +771,7 @@ function renderRGJourney(){
     .attr('r', function(n){return rNode(n.n);})
     .attr('fill', function(n){return RG_COLOR[n.id];})
     .attr('stroke','#050C16').attr('stroke-width',2)
-    .style('cursor','pointer')
+    .style('cursor','grab')
     .on('mouseover', function(ev, n){
       svg.selectAll('circle.rgj-node').attr('opacity', function(m){ return (m.id===n.id) ? 1 : 0.25; });
       svg.selectAll('path.rgj-edge').each(function(){
@@ -788,12 +791,34 @@ function renderRGJourney(){
     });
   nodeSel.append('title').text(function(n){return RG_LABEL[n.id]+': '+fmtN(n.n)+' sessões observadas';});
 
-  svg.selectAll('text.rgj-label').data(data.nodes).enter().append('text')
+  var labelSel = svg.selectAll('text.rgj-label').data(data.nodes).enter().append('text')
     .attr('class','rgj-label')
     .attr('x', function(n){return nodeById[n.id].x;})
     .attr('y', function(n){return nodeById[n.id].y - rNode(n.n) - 8;})
     .attr('text-anchor','middle').attr('font-size',12).attr('font-weight',700)
     .attr('fill','#D0E8FF').text(function(n){return RG_LABEL[n.id];});
+
+  // Nós têm posição fixa (layout circular), sem simulação de força — mas
+  // continuavam travados (sem d3.drag) diferente do Dígrafo principal.
+  // Arrastar move só o nó solto + reposiciona label e arestas conectadas,
+  // mesmo padrão do fix de drag do Dígrafo (sem reaquecer/mexer no resto).
+  nodeSel.call(d3.drag()
+    .on('start', function(){ d3.select(this).style('cursor','grabbing'); })
+    .on('drag', function(ev, n){
+      var p = nodeById[n.id];
+      p.x = ev.x; p.y = ev.y;
+      d3.select(this).attr('cx', p.x).attr('cy', p.y);
+      labelSel.filter(function(m){return m.id===n.id;})
+        .attr('x', p.x).attr('y', p.y - rNode(n.n) - 8);
+      svg.selectAll('path.rgj-edge').each(function(){
+        var el = d3.select(this);
+        var src = el.attr('data-source'), tgt = el.attr('data-target');
+        if(src===n.id || tgt===n.id){
+          el.attr('d', _rgjEdgeD(nodeById[src], nodeById[tgt]));
+        }
+      });
+    })
+    .on('end', function(){ d3.select(this).style('cursor','grab'); }));
 
   // Painel lateral: legenda + ranking + nota metodológica
   var side = '<div class="rgj-card"><div class="ins-title" style="margin-bottom:8px">&#128257; Categorias (RG)</div>';
