@@ -291,6 +291,19 @@ function renderMap(){
   }
   if(toggle.checked && !_leafletMap.hasLayer(_leafletMap._antenaLayer)) _leafletMap._antenaLayer.addTo(_leafletMap);
 
+  var vTog = document.getElementById('map-voronoi-toggle');
+  var vSel = document.getElementById('voronoi-indicador');
+  if(!vTog._wired){
+    vTog._wired = true;
+    vTog.addEventListener('change', function(){
+      document.getElementById('voronoi-options').style.display = vTog.checked ? 'block' : 'none';
+      if(vTog.checked) _voronoiRender(vSel.value);
+      else if(_leafletMap._voronoiLayer) _leafletMap.removeLayer(_leafletMap._voronoiLayer);
+    });
+    vSel.addEventListener('change', function(){ if(vTog.checked) _voronoiRender(vSel.value); });
+  }
+  if(vTog.checked) _voronoiRender(vSel.value);
+
   var nodeById = {};
   RAW.nodes.forEach(function(n){ nodeById[n.id] = n; });
 
@@ -348,6 +361,123 @@ function renderMap(){
   if(!_leafletMap._geoSavedLayer) _geoRenderSaved();
   _geoUpdateUI();
   setTimeout(function(){ _leafletMap.invalidateSize(); }, 80);
+}
+
+/* ── Voronoi — divide a área em células a partir das antenas reais
+   (d3.Delaunay, já incluso no bundle completo do D3), recortado pela
+   bounding box da cidade. O pipeline (00_preparar_antenas_anatel.py)
+   já tinha um stub para isso (calcular_voronoi_simples) que nunca
+   chegou a gerar o WKT completo — calculamos aqui no navegador, sobre
+   os dados já carregados, em vez de terminar aquele stub em Python.
+
+   Assinantes (quantidade extensiva) é distribuído proporcionalmente
+   pela área da célula dentro do cluster K-Means da antena — dá uma
+   estimativa de densidade mais suave que repetir o valor do cluster
+   em toda antena. Os demais indicadores (drop/congestionamento/
+   download/vamping) são taxas/agregados por cluster, não medidos por
+   antena individual — herdados do cluster sem redistribuição, e o
+   tooltip deixa isso explícito. ─────────────────────────────────── */
+var _voronoiCells = null;
+
+function _voronoiCompute(){
+  if(_voronoiCells) return _voronoiCells;
+  var bb = RAW.cidade.bbox;
+
+  // Muitas antenas compartilham a mesma lat/lon exata (setores/bandas
+  // diferentes da mesma torre física — comum no cadastro Anatel).
+  // Delaunay/Voronoi não gera célula para pontos coincidentes, então
+  // agrupamos por site físico antes de triangular — 1 célula por
+  // localização real, não por linha do CSV.
+  var porSite = {};
+  RAW.antenas.forEach(function(a){
+    var key = a.lat.toFixed(6) + ',' + a.lon.toFixed(6);
+    if(!porSite[key]) porSite[key] = { lat: a.lat, lon: a.lon, cluster: a.cluster, ecgis: [] };
+    porSite[key].ecgis.push(a.ecgi);
+  });
+  var sites = Object.keys(porSite).map(function(k){ return porSite[k]; });
+
+  var points = sites.map(function(s){ return [s.lon, s.lat]; });
+  var delaunay = d3.Delaunay.from(points);
+  var voronoi = delaunay.voronoi([bb.lonLeft, bb.latBottom, bb.lonRight, bb.latTop]);
+
+  var nodeById = {};
+  RAW.nodes.forEach(function(n){ nodeById[n.id] = n; });
+
+  var areaPorCluster = {};
+  var brutas = sites.map(function(s, i){
+    var poly = voronoi.cellPolygon(i);
+    if(!poly) return null;
+    var area = Math.abs(d3.polygonArea(poly));
+    areaPorCluster[s.cluster] = (areaPorCluster[s.cluster] || 0) + area;
+    return { site: s, poly: poly, area: area };
+  });
+
+  _voronoiCells = brutas.filter(Boolean).map(function(c){
+    var node = nodeById[c.site.cluster];
+    var totalArea = areaPorCluster[c.site.cluster] || 1;
+    var fracao = c.area / totalArea;
+    var nSetores = c.site.ecgis.length;
+    return {
+      ecgi: c.site.ecgis[0] + (nSetores > 1 ? ' (site com ' + nSetores + ' setores)' : ''),
+      cluster: c.site.cluster,
+      latlon: c.poly.map(function(p){ return [p[1], p[0]]; }),
+      n_usuarios: node ? node.n_usuarios * fracao : 0,
+      drop_medio: node ? node.drop_medio : null,
+      cong_medio: node ? node.cong_medio : null,
+      download_gb: node ? node.download_gb : null,
+      vamping_score: node ? node.vamping_score : null,
+    };
+  });
+  return _voronoiCells;
+}
+
+var VORONOI_META = {
+  n_usuarios:   { label: 'Assinantes (estimado por área)', fmt: function(v){ return fmtN(Math.round(v)); }, extensivo: true },
+  drop_medio:   { label: 'Drop médio',            fmt: fmtPct, extensivo: false },
+  cong_medio:   { label: 'Congestionamento',      fmt: fmtPct, extensivo: false },
+  download_gb:  { label: 'Download total (GB)',   fmt: function(v){ return fmtN(Math.round(v)); }, extensivo: false },
+  vamping_score:{ label: 'Vamping',               fmt: function(v){ return v!=null ? v.toFixed(1)+'/100' : '—'; }, extensivo: false },
+};
+
+function _voronoiRender(indicador){
+  var cells = _voronoiCompute();
+  var meta = VORONOI_META[indicador];
+  var vals = cells.map(function(c){ return c[indicador]; }).filter(function(v){ return v!=null; });
+  var lo = d3.min(vals), hi = d3.max(vals);
+  var colorScale = d3.scaleLinear().domain([lo, hi]).range(['#1E3A5F', '#E87000']).clamp(true);
+
+  if(_leafletMap._voronoiLayer) _leafletMap.removeLayer(_leafletMap._voronoiLayer);
+  if(!_leafletMap._voronoiRenderer) _leafletMap._voronoiRenderer = L.canvas();
+  var layer = L.layerGroup();
+
+  cells.forEach(function(c){
+    var v = c[indicador];
+    var color = v != null ? colorScale(v) : '#333';
+    var poly = L.polygon(c.latlon, {
+      renderer: _leafletMap._voronoiRenderer,
+      color: '#0A1422', weight: 0.5, fillColor: color, fillOpacity: 0.55
+    });
+    var origem = meta.extensivo
+      ? 'estimado por área dentro do cluster ' + c.cluster
+      : 'herdado do cluster ' + c.cluster + ' — não medido por antena individual';
+    poly.bindTooltip(
+      '<b>' + c.ecgi + '</b><br>' + meta.label + ': ' + (v != null ? meta.fmt(v) : '—') +
+      '<br><span style="font-size:10px;color:#64748B">' + origem + '</span>',
+      { sticky: true }
+    );
+    poly.addTo(layer);
+  });
+  layer.addTo(_leafletMap);
+  _leafletMap._voronoiLayer = layer;
+
+  var legend = document.getElementById('voronoi-legend');
+  if(legend){
+    legend.innerHTML = meta.label + '<br>' +
+      '<div style="display:flex;align-items:center;gap:4px;margin-top:3px;">' +
+      '<span>' + (lo != null ? meta.fmt(lo) : '—') + '</span>' +
+      '<div style="flex:1;height:6px;background:linear-gradient(90deg,#1E3A5F,#E87000);border-radius:3px;"></div>' +
+      '<span>' + (hi != null ? meta.fmt(hi) : '—') + '</span></div>';
+  }
 }
 
 /* ── Geofence — desenhar e nomear cluster customizado no Mapa
