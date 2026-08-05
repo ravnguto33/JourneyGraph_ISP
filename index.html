@@ -144,6 +144,7 @@ body{
   </div>
   <nav id="topnav">
     <a href="#journeygraph">JourneyGraph</a>
+    <a href="#journeygraph-mno">JourneyGraph MNO</a>
     <a href="#netgraph">NetGraph</a>
     <a href="#itxview">ITXView</a>
     <a href="#stepgraph">StepGraph</a>
@@ -228,6 +229,67 @@ body{
         <circle cx="300" cy="270" r="10" fill="#E87000"/>
         <text x="230" y="164" text-anchor="middle" font-size="10" font-weight="700" fill="#09111E" font-family="Arial">ASN</text>
         <text x="230" y="40" text-anchor="middle" font-size="13" fill="#9ACCE0" font-family="Arial" letter-spacing="1">DÍGRAFO DE JORNADA</text>
+      </svg>
+    </div>
+  </article>
+
+  <article class="solution" id="journeygraph-mno">
+    <div class="sol-body">
+      <span class="sol-kicker">CDRView MNO Edition · Jornada do assinante móvel</span>
+      <h2 class="sol-title">Journey<span class="hi">Graph</span> MNO Edition</h2>
+      <p class="sol-desc">A mesma arquitetura de dígrafo, Painel de Alertas e Assistente do JourneyGraph ISP Edition, aplicada à jornada do assinante <b>móvel</b> — CDR de voz/dados/SMS sobre antenas reais licenciadas pela Anatel, filtradas por operadora, para a praça de Brasília (DF). Segunda cidade da arquitetura multi-cidade do CDRView PERSONAS Module (a primeira, Florianópolis, é o JourneyGraph ISP fixo).</p>
+      <div class="sol-tags">
+        <span>CDR móvel + Antenas Anatel reais</span><span>4 personas · K-Means + XGBoost</span><span>Markov + Bayes por persona</span><span>Multi-cidade parametrizada</span>
+      </div>
+      <span class="sol-sub">Onde gera valor</span>
+      <ul class="sol-feats">
+        <li>NOC móvel: dígrafo por cluster geográfico (K-Means sobre antenas reais), com taxa de drop, congestionamento e completamento de voz por persona</li>
+        <li>Priorização: Painel de Alertas com tendência (cadeia de Markov) e causa provável (Bayes simplificado, evidência = correlação real) calculados de fato sobre a série sintética, não heurística de score</li>
+        <li>Produto: 4 personas comportamentais (Executivo Mobile, Gamer/Streamer, Comutador Urbano Diário, Churn Silencioso) curadas em planilha — fonte de verdade que o pipeline de clustering respeita, não sobrescreve</li>
+        <li>Compliance: operadora é parâmetro do pipeline de antenas (não hardcoded), com <code>assinante_hash</code> sintético e Consulta Individual restrita (senha + log de auditoria) para qualquer acesso a nível de assinante</li>
+      </ul>
+      <span class="sol-sub">Diferencial</span>
+      <ul class="sol-feats">
+        <li>Antenas reais da base licenciada da Anatel (Estações Licenciadas SMP), não um catálogo fixo de bairros — 4.186 antenas Claro filtradas para o Distrito Federal nesta execução</li>
+      </ul>
+      <div class="sol-ctas">
+        <a class="btn btn-sm btn-d3" href="journeygraph-mno/index.html">Abrir o dashboard ↗</a>
+      </div>
+    </div>
+    <div class="sol-visual">
+      <svg viewBox="0 0 460 340" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="jgmGlow" cx="50%" cy="45%" r="60%">
+            <stop offset="0%" stop-color="#E87000" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="#E87000" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <circle cx="230" cy="160" r="150" fill="url(#jgmGlow)"/>
+        <g stroke="#2A4A6F" stroke-width="1.4" fill="none" opacity="0.9">
+          <path d="M230,160 L120,100"/>
+          <path d="M230,160 L340,100"/>
+          <path d="M230,160 L100,210"/>
+          <path d="M230,160 L360,210"/>
+          <path d="M230,160 L180,280"/>
+          <path d="M230,160 L290,280"/>
+        </g>
+        <g stroke="#E87000" stroke-width="2" fill="none">
+          <path d="M230,160 L340,100"/>
+          <path d="M230,160 L180,280"/>
+        </g>
+        <!-- torre/antena estilizada no nó central -->
+        <path d="M230,120 L210,175 L250,175 Z" fill="none" stroke="#E87000" stroke-width="2.5"/>
+        <path d="M230,105 L230,120" stroke="#E87000" stroke-width="2.5"/>
+        <path d="M214,140 Q230,132 246,140" fill="none" stroke="#8ABEDF" stroke-width="1.6" opacity="0.8"/>
+        <path d="M208,152 Q230,140 252,152" fill="none" stroke="#8ABEDF" stroke-width="1.6" opacity="0.6"/>
+        <circle cx="120" cy="100" r="9" fill="#12324A" stroke="#8ABEDF" stroke-width="1.5"/>
+        <circle cx="340" cy="100" r="9" fill="#E87000"/>
+        <circle cx="100" cy="210" r="9" fill="#12324A" stroke="#8ABEDF" stroke-width="1.5"/>
+        <circle cx="360" cy="210" r="9" fill="#12324A" stroke="#8ABEDF" stroke-width="1.5"/>
+        <circle cx="180" cy="280" r="9" fill="#E87000"/>
+        <circle cx="290" cy="280" r="9" fill="#12324A" stroke="#8ABEDF" stroke-width="1.5"/>
+        <text x="230" y="40" text-anchor="middle" font-size="13" fill="#9ACCE0" font-family="Arial" letter-spacing="1">DÍGRAFO MÓVEL · ANTENAS ANATEL</text>
+        <text x="230" y="315" text-anchor="middle" font-size="11" fill="#567898" font-family="Arial" letter-spacing=".5">BRASÍLIA (DF) · CLARO</text>
       </svg>
     </div>
   </article>
