@@ -258,10 +258,37 @@ function renderMap(){
     }).addTo(_leafletMap);
     _leafletMap._edgeLayer = L.layerGroup().addTo(_leafletMap);
     _leafletMap._clusterLayer = L.layerGroup().addTo(_leafletMap);
+    _leafletMap._antenaLayer = L.layerGroup(); // não adiciona ainda — só via toggle
   } else {
     _leafletMap._edgeLayer.clearLayers();
     _leafletMap._clusterLayer.clearLayers();
   }
+
+  if(_leafletMap._antenaLayer.getLayers().length === 0){
+    RAW.antenas.forEach(function(a){
+      var m = L.circleMarker([a.lat, a.lon], {
+        radius: 2.5, color: '#8ABEDF', weight: 1, fillColor: '#5AC8FA', fillOpacity: 0.6
+      });
+      m.bindPopup(
+        '<div class="map-popup-title">&#128225; '+a.ecgi+'</div>'+
+        '<div class="map-popup-row">Cluster: '+a.cluster+'</div>'+
+        '<div class="map-popup-row">Tecnologia: '+a.tecnologia+'</div>'+
+        '<div class="map-popup-row">Altura: '+(a.altura_m!=null?a.altura_m+' m':'—')+' · Azimute: '+(a.azimute_graus!=null?a.azimute_graus+'°':'—')+'</div>',
+        { className: 'map-leaflet-tip' }
+      );
+      m.addTo(_leafletMap._antenaLayer);
+    });
+  }
+  document.getElementById('map-antenas-count').textContent = fmtN(RAW.antenas.length);
+  var toggle = document.getElementById('map-antenas-toggle');
+  if(!toggle._wired){
+    toggle._wired = true;
+    toggle.addEventListener('change', function(){
+      if(toggle.checked) _leafletMap._antenaLayer.addTo(_leafletMap);
+      else _leafletMap.removeLayer(_leafletMap._antenaLayer);
+    });
+  }
+  if(toggle.checked && !_leafletMap.hasLayer(_leafletMap._antenaLayer)) _leafletMap._antenaLayer.addTo(_leafletMap);
 
   var nodeById = {};
   RAW.nodes.forEach(function(n){ nodeById[n.id] = n; });

@@ -299,7 +299,15 @@ body.screen-rgjourney #cat-sidebar { display:none !important; }
       <div class="tooltip" id="tooltip"></div>
     </div>
 
-    <div class="screen" id="screen-map"><div id="map-leaflet"></div></div>
+    <div class="screen" id="screen-map">
+      <div id="map-leaflet"></div>
+      <div id="map-controls" style="position:absolute;top:10px;right:10px;z-index:1000;background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:8px 10px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#D0E8FF;cursor:pointer;white-space:nowrap;">
+          <input type="checkbox" id="map-antenas-toggle" style="cursor:pointer;">
+          &#128225; Mostrar antenas (<span id="map-antenas-count"></span>)
+        </label>
+      </div>
+    </div>
 
     <div class="screen" id="screen-rgjourney">
       <div id="rgjourney-content"></div>
