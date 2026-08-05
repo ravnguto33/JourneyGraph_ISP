@@ -653,6 +653,10 @@ function renderRGJourney(){
   wrap.innerHTML = '<div id="rgj-svg-wrap"><svg id="rgj-svg" viewBox="0 0 560 480"></svg></div><div class="rgj-side" id="rgj-side"></div>';
 
   var svg = d3.select('#rgj-svg');
+  var g = svg.append('g').attr('class', 'rgj-zoom-group');
+  svg.call(d3.zoom().scaleExtent([0.5, 3]).on('zoom', function(ev){ g.attr('transform', ev.transform); }));
+  svg = g; // daqui pra baixo, todo append() vai dentro do grupo zoomável
+
   var cx=280, cy=230, R=170;
   var nodeById = {};
   data.nodes.forEach(function(n,i){
@@ -680,9 +684,12 @@ function renderRGJourney(){
     var nx=-dy/dist*offset, ny=dx/dist*offset;
     var pathD = 'M'+a.x+','+a.y+' Q'+(mx+nx)+','+(my+ny)+' '+b.x+','+b.y;
     var ratio = e.n/maxE;
+    var baseOpacity = 0.25+ratio*0.55;
     var path = svg.append('path').attr('d', pathD).attr('fill','none')
+      .attr('class','rgj-edge')
+      .attr('data-source', e.source).attr('data-target', e.target)
       .attr('stroke', RG_COLOR[e.source]).attr('stroke-width', wEdge(e.n))
-      .attr('stroke-opacity', 0.25+ratio*0.55)
+      .attr('stroke-opacity', baseOpacity).property('_baseOpacity', baseOpacity)
       .attr('marker-end','url(#rgj-arrow)')
       .style('cursor','pointer');
     path.append('title').text(RG_LABEL[e.source]+' → '+RG_LABEL[e.target]+': '+fmtN(e.n)+' transições observadas');
@@ -694,7 +701,25 @@ function renderRGJourney(){
     .attr('cy', function(n){return nodeById[n.id].y;})
     .attr('r', function(n){return rNode(n.n);})
     .attr('fill', function(n){return RG_COLOR[n.id];})
-    .attr('stroke','#050C16').attr('stroke-width',2);
+    .attr('stroke','#050C16').attr('stroke-width',2)
+    .style('cursor','pointer')
+    .on('mouseover', function(ev, n){
+      svg.selectAll('circle.rgj-node').attr('opacity', function(m){ return (m.id===n.id) ? 1 : 0.25; });
+      svg.selectAll('path.rgj-edge').each(function(){
+        var el = d3.select(this);
+        var conectada = el.attr('data-source')===n.id || el.attr('data-target')===n.id;
+        el.attr('stroke-opacity', conectada ? Math.max(el.property('_baseOpacity'), 0.85) : 0.06);
+      });
+      svg.selectAll('text.rgj-label').attr('opacity', function(m){ return (m.id===n.id) ? 1 : 0.35; });
+    })
+    .on('mouseout', function(){
+      svg.selectAll('circle.rgj-node').attr('opacity', 1);
+      svg.selectAll('path.rgj-edge').each(function(){
+        var el = d3.select(this);
+        el.attr('stroke-opacity', el.property('_baseOpacity'));
+      });
+      svg.selectAll('text.rgj-label').attr('opacity', 1);
+    });
   nodeSel.append('title').text(function(n){return RG_LABEL[n.id]+': '+fmtN(n.n)+' sessões observadas';});
 
   svg.selectAll('text.rgj-label').data(data.nodes).enter().append('text')
