@@ -1,6 +1,6 @@
 # Padrão de Documentação de Produto — Vísent
 
-**Versão:** 1.1 · **Data:** 2026-08-03 (revisão: acrescenta o capítulo 8, Glossário e Siglas, como capítulo obrigatório) · **Status:** adotado para os produtos da Lounge de Soluções ISP (JourneyGraph, NetGraph, Égide Vita, StepGraph, ITXView) e para novos produtos do portfólio Vísent.
+**Versão:** 1.2 · **Data:** 2026-08-05 (revisão: registra a aplicação do padrão ao JourneyGraph MNO Edition, primeiro produto da Lounge com Product Report completo desde a origem, sem lacuna a reconciliar) · **Status:** adotado para os produtos da Lounge de Soluções ISP/MNO (JourneyGraph, JourneyGraph MNO Edition, NetGraph, Égide Vita, StepGraph, ITXView) e para novos produtos do portfólio Vísent.
 
 ## 0. Origem e escopo deste documento
 
@@ -174,8 +174,9 @@ Isso é um problema real de fonte não-única (a mesma alegação de fato — "i
 | Égide Vita | Completo | Completo | Completo | Completo (Anexo B/C) | Parcial | Já pratica as 2 camadas | Já existe (Anexo C.3) | Já existe (cap. 8) | Completo (22 termos) |
 | StepGraph | Básico (o que existe hoje) | Não documentado nesta versão | Não documentado nesta versão | Não documentado nesta versão | Não documentado nesta versão | Não aplicável (sem alegação de método algorítmico) | Não aplicável (sem Consulta Individual) | Reconstruído a partir do git log | Completo, deliberadamente enxuto (6 termos) |
 | ITXView | Enxuto (código-fonte indisponível no repositório — só bundle de produção) | Não verificável contra código-fonte | Não verificável | Parcial (citações cruzadas do JourneyGraph) | Parcial | Não verificável | Não aplicável neste levantamento | Não aplicável (sem histórico de commits específico no repositório) | Completo (14 termos) |
+| JourneyGraph MNO Edition | Completo | Completo (motor analítico herdado do NetGraph, recalibrado para rede móvel) | Completo | Completo (§4.1/4.2/4.3) | Completo (5 casos) | Já pratica as 2 camadas (herdado do padrão desde a origem deste documento) | Já existe (mesma base legal do JourneyGraph/NetGraph) | Reconstruído a partir do git log (24 commits, 04–05/08/2026) | Completo (27 termos) |
 
-Os cinco documentos gerados junto com este padrão (`docs/produtos/*.docx`) aplicam esta tabela na prática — preenchendo cada bloco com conteúdo real do produto correspondente, e marcando explicitamente "Não documentado nesta versão" onde não há conteúdo real a reportar, em vez de inventar.
+Os seis documentos gerados junto com este padrão (`docs/produtos/*.docx`) aplicam esta tabela na prática — preenchendo cada bloco com conteúdo real do produto correspondente, e marcando explicitamente "Não documentado nesta versão" onde não há conteúdo real a reportar, em vez de inventar.
 
 ---
 
