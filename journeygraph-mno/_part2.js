@@ -259,6 +259,7 @@ function renderMap(){
     _leafletMap._edgeLayer = L.layerGroup().addTo(_leafletMap);
     _leafletMap._clusterLayer = L.layerGroup().addTo(_leafletMap);
     _leafletMap._antenaLayer = L.layerGroup(); // não adiciona ainda — só via toggle
+    _leafletMap.on('click', _geoOnMapClick);
   } else {
     _leafletMap._edgeLayer.clearLayers();
     _leafletMap._clusterLayer.clearLayers();
@@ -344,7 +345,160 @@ function renderMap(){
     marker.addTo(_leafletMap._clusterLayer);
   });
 
+  if(!_leafletMap._geoSavedLayer) _geoRenderSaved();
+  _geoUpdateUI();
   setTimeout(function(){ _leafletMap.invalidateSize(); }, 80);
+}
+
+/* ── Geofence — desenhar e nomear cluster customizado no Mapa
+   (mesmo padrão do StepGraph real: mapa-rm/src/App.jsx — clique a
+   clique, ponto-em-poligono, nomeia ao atingir 3+ vértices). Como o
+   CDR aqui não tem lat/lon por assinante, a agregação de estatísticas
+   do geofence é feita pelos CLUSTERS K-Means cujas antenas caem dentro
+   do polígono desenhado — aproximação explícita, não um recálculo do
+   CDR bruto por geofence. ──────────────────────────────────────────── */
+var _geoDrawing = false;
+var _geoCurrentPoly = [];
+var _geoCustomClusters = [];
+var _geoPreviewLayer = null;
+var _geoVertexLayer = null;
+
+function _pointInPoly(lat, lon, poly){
+  var inside = false;
+  for(var i=0, j=poly.length-1; i<poly.length; j=i++){
+    var yi=poly[i][0], xi=poly[i][1], yj=poly[j][0], xj=poly[j][1];
+    var intersect = ((yi>lat) !== (yj>lat)) && (lon < (xj-xi)*(lat-yi)/(yj-yi)+xi);
+    if(intersect) inside = !inside;
+  }
+  return inside;
+}
+function _geoOnMapClick(e){
+  if(!_geoDrawing) return;
+  _geoCurrentPoly.push([e.latlng.lat, e.latlng.lng]);
+  _geoRedrawPreview();
+  _geoUpdateUI();
+}
+function _geoStartDrawing(){
+  _geoDrawing = true;
+  _geoCurrentPoly = [];
+  _leafletMap.getContainer().style.cursor = 'crosshair';
+  _geoUpdateUI();
+}
+function _geoCancelDrawing(){
+  _geoDrawing = false;
+  _geoCurrentPoly = [];
+  if(_geoPreviewLayer){ _leafletMap.removeLayer(_geoPreviewLayer); _geoPreviewLayer=null; }
+  if(_geoVertexLayer){ _leafletMap.removeLayer(_geoVertexLayer); _geoVertexLayer=null; }
+  _leafletMap.getContainer().style.cursor = '';
+  _geoUpdateUI();
+}
+function _geoUndoPoint(){
+  _geoCurrentPoly.pop();
+  _geoRedrawPreview();
+  _geoUpdateUI();
+}
+function _geoRedrawPreview(){
+  if(_geoPreviewLayer){ _leafletMap.removeLayer(_geoPreviewLayer); _geoPreviewLayer=null; }
+  if(_geoVertexLayer){ _leafletMap.removeLayer(_geoVertexLayer); _geoVertexLayer=null; }
+  if(_geoCurrentPoly.length===0) return;
+  if(_geoCurrentPoly.length>=2){
+    _geoPreviewLayer = L.polygon(_geoCurrentPoly, {color:'#A855F7', weight:2, dashArray:'6 4', fillOpacity:0.15}).addTo(_leafletMap);
+  }
+  _geoVertexLayer = L.layerGroup(_geoCurrentPoly.map(function(p){
+    return L.circleMarker(p, {radius:4, color:'#A855F7', fillColor:'#A855F7', fillOpacity:1});
+  })).addTo(_leafletMap);
+}
+function _geoFinalizarFromInput(){
+  var inp = document.getElementById('geo-nome-input');
+  if(inp) _geoFinalizar(inp.value);
+}
+function _geoFinalizar(nome){
+  nome = (nome||'').trim();
+  if(_geoCurrentPoly.length < 3 || !nome) return;
+  var poly = _geoCurrentPoly.slice();
+  var antenasDentro = RAW.antenas.filter(function(a){ return _pointInPoly(a.lat, a.lon, poly); });
+  var clustersTocados = {};
+  antenasDentro.forEach(function(a){ clustersTocados[a.cluster] = (clustersTocados[a.cluster]||0)+1; });
+  var nodesTocados = RAW.nodes.filter(function(n){ return clustersTocados[n.id]; });
+
+  var mix = {};
+  nodesTocados.forEach(function(n){
+    Object.keys(n.mix).forEach(function(k){ mix[k] = (mix[k]||0) + n.mix[k]; });
+  });
+
+  var geo = {
+    id: 'GEO_' + Date.now(),
+    nome: nome,
+    polygon: poly,
+    n_antenas: antenasDentro.length,
+    n_clusters_tocados: Object.keys(clustersTocados).length,
+    n_usuarios: d3.sum(nodesTocados, function(n){return n.n_usuarios;}),
+    drop_medio: nodesTocados.length ? d3.mean(nodesTocados, function(n){return n.drop_medio;}) : null,
+    cong_medio: nodesTocados.length ? d3.mean(nodesTocados, function(n){return n.cong_medio;}) : null,
+    vamping_score: nodesTocados.length ? d3.mean(nodesTocados, function(n){return n.vamping_score;}) : null,
+    mix: mix,
+  };
+  _geoCustomClusters.push(geo);
+  _geoCancelDrawing();
+  _geoRenderSaved();
+}
+function _geoDelete(id){
+  _geoCustomClusters = _geoCustomClusters.filter(function(g){ return g.id !== id; });
+  _geoRenderSaved();
+  _geoUpdateUI();
+}
+function _geoFocus(id){
+  var g = _geoCustomClusters.filter(function(x){return x.id===id;})[0];
+  if(g) _leafletMap.fitBounds(L.polygon(g.polygon).getBounds());
+}
+function _geoRenderSaved(){
+  if(!_leafletMap._geoSavedLayer) _leafletMap._geoSavedLayer = L.layerGroup().addTo(_leafletMap);
+  _leafletMap._geoSavedLayer.clearLayers();
+  _geoCustomClusters.forEach(function(geo){
+    var poly = L.polygon(geo.polygon, {color:'#A855F7', weight:2, dashArray:'6 4', fillColor:'#A855F7', fillOpacity:0.12});
+    var mixText = Object.keys(geo.mix).map(function(k){return k+': '+fmtN(geo.mix[k]);}).join('<br>');
+    poly.bindPopup(
+      '<div class="map-popup-title">&#9733; '+geo.nome+'</div>'+
+      '<div class="map-popup-row">'+fmtN(geo.n_antenas)+' antenas · '+geo.n_clusters_tocados+' cluster(s) tocado(s)</div>'+
+      '<div class="map-popup-row">~'+fmtN(geo.n_usuarios)+' assinantes (soma dos clusters tocados)</div>'+
+      (geo.drop_medio!=null ? '<div class="map-popup-row">Drop médio: '+fmtPct(geo.drop_medio)+' · Vamping: '+geo.vamping_score.toFixed(1)+'/100</div>' : '')+
+      (mixText ? '<div class="map-popup-row">'+mixText+'</div>' : '')+
+      '<div class="map-popup-row" style="font-size:10px;color:#64748B;margin-top:4px">Aproximação: agrega os clusters K-Means cujas antenas caem dentro do polígono — não é um recálculo do CDR bruto por geofence.</div>',
+      { className: 'map-leaflet-tip' }
+    );
+    poly.addTo(_leafletMap._geoSavedLayer);
+  });
+}
+function _geoUpdateUI(){
+  var el = document.getElementById('geo-draw-panel');
+  if(!el) return;
+  var html = '';
+  if(!_geoDrawing){
+    html += '<button class="fbtn" onclick="_geoStartDrawing()" style="text-align:center;width:100%">&#9998; Novo Cluster (Geofence)</button>';
+  } else {
+    html += '<div style="font-size:11px;color:#8ABEDF;margin-top:2px">Clique no mapa para adicionar vértices: <b style="color:#D0E8FF">'+_geoCurrentPoly.length+'</b></div>';
+    html += '<div style="display:flex;gap:4px;margin-top:6px">';
+    html += '<button class="fbtn" onclick="_geoUndoPoint()" style="flex:1;text-align:center" '+(_geoCurrentPoly.length===0?'disabled':'')+'>&#8617; Desfazer</button>';
+    html += '<button class="fbtn" onclick="_geoCancelDrawing()" style="flex:1;text-align:center">&#10005; Cancelar</button>';
+    html += '</div>';
+    if(_geoCurrentPoly.length >= 3){
+      html += '<div style="margin-top:8px;font-size:11px;color:#2ECC71">&#10003; Pronto para nomear!</div>';
+      html += '<input type="text" id="geo-nome-input" class="sva-num-input" placeholder="Ex: Zona Norte Expandida" style="width:100%;margin-top:4px;box-sizing:border-box" onkeydown="if(event.key===\'Enter\')_geoFinalizarFromInput()">';
+      html += '<button class="fbtn" onclick="_geoFinalizarFromInput()" style="text-align:center;margin-top:6px;width:100%;background:#7C3AED;border-color:#7C3AED;color:#fff">&#10003; Criar</button>';
+    } else {
+      html += '<div style="font-size:10px;color:#3A6080;margin-top:4px">Mínimo de 3 vértices para nomear.</div>';
+    }
+  }
+  if(_geoCustomClusters.length){
+    html += '<div style="font-size:10px;color:#567898;margin-top:12px;text-transform:uppercase;letter-spacing:.05em">Clusters criados</div>';
+    _geoCustomClusters.forEach(function(g){
+      html += '<div style="display:flex;align-items:center;gap:4px;margin-top:5px;font-size:11px;color:#D0E8FF">'+
+        '<span style="flex:1;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="_geoFocus(\''+g.id+'\')" title="'+g.nome+'">&#9733; '+g.nome+'</span>'+
+        '<span style="color:#567898;flex-shrink:0">'+g.n_antenas+' ant.</span>'+
+        '<button onclick="_geoDelete(\''+g.id+'\')" style="background:none;border:none;color:#FF6B5B;cursor:pointer;font-size:12px;flex-shrink:0" title="Excluir">&#10005;</button></div>';
+    });
+  }
+  el.innerHTML = html;
 }
 
 /* ── Jornada RG (dígrafo de categorias de serviço, equivalente ao
