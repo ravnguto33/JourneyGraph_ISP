@@ -39,6 +39,10 @@ body{font-family:Arial,sans-serif;background:#09111E;color:#E0EAF5;height:100vh;
 .sva-num-input::placeholder{color:#3A6080;}
 #edge-filter-group{display:none;}
 body.screen-graph #edge-filter-group{display:flex !important;}
+#iped-filter-group{display:none;}
+body.screen-graph #iped-filter-group{display:flex !important;}
+.iped-fbtn{opacity:1;}
+.iped-fbtn.off{opacity:0.35;}
 
 /* ── METRICS STRIP ── */
 #metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:5px 16px;background:#07101C;border-bottom:1px solid #1A3050;flex-shrink:0;}
@@ -279,6 +283,10 @@ body.screen-rgjourney #cat-sidebar { display:none !important; }
         </div>
         <button class="fbtn" id="edge-filter-clear-btn" style="text-align:center">Limpar filtro</button>
         <div id="edge-filter-count" style="font-size:10px;color:#567898"></div>
+      </div>
+      <div class="fb-group" id="iped-filter-group">
+        <span class="fb-label" title="Índice Ponderado de qualidade no DEslocamento — mesma metodologia do StepGraph, aplicada ao CDR móvel">Trajeto · qualidade (IPED)</span>
+        <div id="iped-filter-buttons"></div>
       </div>
     </div>
   </div>

@@ -1,5 +1,5 @@
 
-var S = { screen: 'overview', personaFilter: 'all', edgeMin: null, edgeMax: null };
+var S = { screen: 'overview', personaFilter: 'all', edgeMin: null, edgeMax: null, ipedFaixas: null };
 
 var PERSONA_MAP = {};
 RAW.personas.forEach(function(p){ PERSONA_MAP[p.id] = p; });
@@ -60,6 +60,27 @@ function buildPersonaFilter(){
           '<span class="leg-name">'+p.id+' '+p.nome+'</span><span class="leg-pct">'+p.pct+'%</span></div>';
   });
   leg.innerHTML = lh;
+}
+/* ── Filtro por faixa IPED (Índice Ponderado de qualidade no
+   DEslocamento — mesma metodologia do StepGraph, agora sobre o CDR
+   móvel) ──────────────────────────────────────────────────────── */
+function buildIpedFilter(){
+  S.ipedFaixas = {};
+  RAW.iped_faixas.forEach(function(f){ S.ipedFaixas[f.faixa] = true; });
+  var wrap = document.getElementById('iped-filter-buttons');
+  var html = '';
+  RAW.iped_faixas.forEach(function(f){
+    html += '<button class="fbtn iped-fbtn" data-faixa="'+f.faixa+'" onclick="_toggleIpedFaixa(\''+f.faixa+'\')" '+
+      'style="border-left:4px solid #'+f.cor_hex+'">'+f.rotulo+'</button>';
+  });
+  wrap.innerHTML = html;
+}
+function _toggleIpedFaixa(faixa){
+  S.ipedFaixas[faixa] = !S.ipedFaixas[faixa];
+  document.querySelectorAll('.iped-fbtn').forEach(function(b){
+    b.classList.toggle('off', !S.ipedFaixas[b.getAttribute('data-faixa')]);
+  });
+  if(S.screen==='graph') renderGraph();
 }
 function _setPersonaFilter(pid){
   S.personaFilter = pid;
@@ -136,7 +157,8 @@ function renderGraph(){
   var edges = RAW.edges.filter(function(e){ return nodeIds[e.source] && nodeIds[e.target]; })
     .filter(function(e){
       return (S.edgeMin==null || e.n_usuarios >= S.edgeMin) &&
-             (S.edgeMax==null || e.n_usuarios <= S.edgeMax);
+             (S.edgeMax==null || e.n_usuarios <= S.edgeMax) &&
+             (!e.iped_faixa || S.ipedFaixas[e.iped_faixa]);
     })
     .map(function(e){ return Object.assign({}, e); });
 
@@ -152,8 +174,14 @@ function renderGraph(){
   svg.call(d3.zoom().scaleExtent([0.3,4]).on('zoom', function(ev){ g.attr('transform', ev.transform); }));
 
   var link = g.append('g').selectAll('line').data(edges).enter().append('line')
-    .attr('stroke', '#2A4A6F').attr('stroke-opacity', 0.5)
+    .attr('stroke', function(e){ return e.iped_cor ? '#'+e.iped_cor : '#2A4A6F'; })
+    .attr('stroke-opacity', 0.75)
     .attr('stroke-width', function(e){ return wScale(e.n_usuarios); });
+  link.append('title').text(function(e){
+    return (e.area_origem||e.source)+' → '+(e.area_destino||e.target)+
+      '\n'+fmtN(e.n_usuarios)+' pessoas · '+fmtN(e.n_viagens)+' viagens'+
+      (e.iped!=null ? '\nIPED: '+e.iped+' ('+e.iped_faixa+')' : '');
+  });
 
   var node = g.append('g').selectAll('circle').data(nodes).enter().append('circle')
     .attr('r', function(n){ return rScale(n.n_usuarios); })
@@ -240,20 +268,22 @@ function renderMap(){
   RAW.edges.forEach(function(e){
     var a = nodeById[e.source], b = nodeById[e.target];
     if(!a || !b || a.lat==null || b.lat==null) return;
+    var cor = e.iped_cor ? '#'+e.iped_cor : '#E87000';
     var line = L.polyline([[a.lat,a.lon],[b.lat,b.lon]], {
-      color: '#E87000',
+      color: cor,
       weight: edgeWeight(e.n_usuarios),
-      opacity: 0.55
+      opacity: 0.65
     });
     line.bindPopup(
       '<div class="map-popup-title">'+(e.area_origem||a.id)+' &#8594; '+(e.area_destino||b.id)+'</div>'+
       '<div class="map-popup-row">'+fmtN(e.n_usuarios)+' assinantes deslocados · '+fmtN(e.n_viagens)+' viagens</div>'+
       '<div class="map-popup-row">Distância média: '+e.dist_km+' km · período predominante: '+e.periodo_predominante+'</div>'+
-      '<div class="map-popup-row">RAT dominante: '+e.rat_dominante+'</div>',
+      '<div class="map-popup-row">RAT dominante: '+e.rat_dominante+'</div>'+
+      (e.iped!=null ? '<div class="map-popup-row"><b>IPED: '+e.iped+' — '+e.iped_faixa+'</b> (qualidade no deslocamento)</div>' : ''),
       { className: 'map-leaflet-tip' }
     );
     line.on('mouseover', function(){ line.setStyle({opacity:0.95, weight: edgeWeight(e.n_usuarios)+2}); });
-    line.on('mouseout', function(){ line.setStyle({opacity:0.55, weight: edgeWeight(e.n_usuarios)}); });
+    line.on('mouseout', function(){ line.setStyle({opacity:0.65, weight: edgeWeight(e.n_usuarios)}); });
     line.addTo(_leafletMap._edgeLayer);
   });
 
@@ -636,6 +666,7 @@ document.addEventListener('DOMContentLoaded', function(){
     b.addEventListener('click', function(){ switchScreen(b.getAttribute('data-screen')); });
   });
   buildPersonaFilter();
+  buildIpedFilter();
   renderOverview();
   window.addEventListener('resize', function(){ if(S.screen==='graph') renderGraph(); });
 
