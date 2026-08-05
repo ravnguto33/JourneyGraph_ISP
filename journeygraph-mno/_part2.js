@@ -7,6 +7,70 @@ RAW.personas.forEach(function(p){ PERSONA_MAP[p.id] = p; });
 var ESTADO_COLOR = { Normal:'#2ECC71', Atencao:'#E8B000', Excecao:'#E87000', Critico:'#FF4444' };
 var REDE_ESTADO_COLOR = { Saudavel:'#2ECC71', Degradado:'#E8B000', Critico:'#E87000', Falha:'#FF4444' };
 
+/* ── Capacidade (regressão) e Outliers (MAD) — portados de verdade de
+   netgraph/index.html (§5.4 CAMADA DE ML), mesma matemática, aplicada
+   aqui à série diária de 15 dias por site/SGW em vez da série horária
+   de 60h do NetGraph fixo. ───────────────────────────────────────── */
+function median(arr){
+  var s=arr.slice().sort(function(a,b){return a-b;});
+  var n=s.length;
+  return n%2 ? s[(n-1)/2] : (s[n/2-1]+s[n/2])/2;
+}
+function robustOutliers(series){
+  var med = median(series);
+  var absDev = series.map(function(x){ return Math.abs(x-med); });
+  var mad = median(absDev) || 1e-6;
+  var z = series.map(function(x){ return 0.6745*(x-med)/mad; });
+  var isOutlier = z.map(function(v){ return Math.abs(v)>3.5; });
+  return {median:med, mad:mad, z:z, isOutlier:isOutlier, lastZ:z[z.length-1], isOutlierNow:isOutlier[isOutlier.length-1]};
+}
+function linreg(xs, ys){
+  var n=xs.length;
+  var mx=xs.reduce(function(a,b){return a+b;},0)/n;
+  var my=ys.reduce(function(a,b){return a+b;},0)/n;
+  var sxy=0, sxx=0;
+  for(var i=0;i<n;i++){ sxy+=(xs[i]-mx)*(ys[i]-my); sxx+=(xs[i]-mx)*(xs[i]-mx); }
+  var b = sxx===0?0:sxy/sxx;
+  var a = my-b*mx;
+  var sse=0;
+  for(var j=0;j<n;j++){ var pred=a+b*xs[j]; sse+=(ys[j]-pred)*(ys[j]-pred); }
+  var dof=Math.max(1,n-2);
+  var mse=sse/dof;
+  var seB = sxx===0?0:Math.sqrt(mse/sxx);
+  var sst=ys.reduce(function(s,y){return s+(y-my)*(y-my);},0);
+  var r2 = sst===0?1:1-(sse/sst);
+  return {a:a,b:b,seB:seB,mse:mse,r2:r2,n:n};
+}
+/* Projeta quando o tráfego cruza thresholdPct do PICO diário observado
+   na própria janela do nó (não há capacidade nominal de equipamento no
+   dataset — ver RAW.series_rede.metodologia). xs = índice do dia (0-14). */
+function capacityProjection(trafegoSerie, thresholdPct){
+  thresholdPct = thresholdPct||90;
+  var peak = Math.max.apply(null, trafegoSerie);
+  var ys = trafegoSerie.map(function(v){ return peak>0 ? (v/peak*100) : 0; });
+  var xs = ys.map(function(_,i){return i;});
+  var reg = linreg(xs, ys);
+  var lastT = xs.length-1;
+  var lastVal = ys[ys.length-1];
+  var alreadyAbove = lastVal>=thresholdPct;
+  if(reg.b<=0.5){
+    return {hasProjection:false, reg:reg, peak:peak, alreadyAbove:alreadyAbove,
+      reason: alreadyAbove ? "Já no pico da janela observada, sem tendência de crescimento clara — projeção não se aplica; ação é imediata, não preditiva." : "Sem tendência de crescimento relevante na janela observada (15 dias)."};
+  }
+  var tCross = (thresholdPct - reg.a) / reg.b;
+  var bLow = reg.b - 1.96*reg.seB, bHigh = reg.b + 1.96*reg.seB;
+  var tCrossOptimistic = bHigh>0.01 ? (thresholdPct-reg.a)/bHigh : Infinity;
+  var tCrossPessimistic = bLow>0.01 ? (thresholdPct-reg.a)/bLow : Infinity;
+  var daysFromNow = tCross - lastT;
+  var daysLow = tCrossOptimistic - lastT, daysHigh = tCrossPessimistic - lastT;
+  if(alreadyAbove || daysFromNow<=0 || !isFinite(daysFromNow)){
+    return {hasProjection:false, reg:reg, peak:peak, alreadyAbove:alreadyAbove,
+      reason: alreadyAbove ? "Já em ou acima de "+thresholdPct+"% do pico observado — ação imediata, não uma projeção futura." : "Ponto de cruzamento projetado no passado dentro do ruído da regressão; sem projeção futura confiável."};
+  }
+  return { hasProjection:true, reg:reg, peak:peak, thresholdPct:thresholdPct,
+    daysFromNow:daysFromNow, daysLow:daysLow, daysHigh:daysHigh, alreadyAbove:alreadyAbove };
+}
+
 function fmtN(n){ return Number(n).toLocaleString('pt-BR'); }
 function fmtPct(x){ return (x*100).toFixed(1)+'%'; }
 
@@ -894,11 +958,43 @@ function _redeSelectNode(d){
     html += '</div>';
   }
 
+  html += _redeCapacidadeOutliersHtml(d.data.tipo, d.data.id);
+
   var panel = document.getElementById('rede-detail');
   if(panel) panel.innerHTML = html;
 }
 function _redeSelectMME(id){
   _redeSelectNode({ data: { id: id, tipo: 'mme', dados: window._redeMmeData[id] || {} } });
+}
+function _redeCapacidadeOutliersHtml(tipo, id){
+  var sr = RAW.series_rede;
+  var serie = tipo==='site' ? sr.site[id] : (tipo==='sgw' ? sr.sgw[id] : null);
+  if(!serie) return '';
+
+  var html = '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #16283F">';
+  html += '<div class="ins-title" style="margin-bottom:6px">Capacidade &amp; Outliers <span style="font-size:9px;color:#3A6080">(15 dias)</span></div>';
+
+  var cap = capacityProjection(serie.trafego_gb, 90);
+  html += '<div style="font-size:10px;color:#567898;margin-bottom:2px">Projeção de capacidade (regressão linear, ref. = pico observado)</div>';
+  if(cap.hasProjection){
+    html += '<div style="font-size:11px;color:#8ABEDF;margin-bottom:8px">Atinge '+cap.thresholdPct+'% do pico em <b style="color:#E87000">~'+Math.round(cap.daysFromNow)+' dias</b> '+
+      '(IC95%: '+Math.round(cap.daysLow)+'–'+Math.round(cap.daysHigh)+' dias) · R²='+cap.reg.r2.toFixed(2)+' · pico='+cap.peak.toFixed(1)+' GB/dia</div>';
+  } else {
+    html += '<div style="font-size:11px;color:#64748B;margin-bottom:8px">'+cap.reason+' (pico='+cap.peak.toFixed(1)+' GB/dia, R²='+cap.reg.r2.toFixed(2)+')</div>';
+  }
+
+  if(serie.drop_pct && serie.cong){
+    var outDrop = robustOutliers(serie.drop_pct);
+    var outCong = robustOutliers(serie.cong);
+    html += '<div style="font-size:10px;color:#567898;margin-bottom:2px">Outlier (MAD, |z|&gt;3.5) — último dia da janela</div>';
+    html += '<div style="font-size:11px;color:#8ABEDF">Drop: z='+outDrop.lastZ.toFixed(2)+' '+
+      (outDrop.isOutlierNow?'<span class="alert-state" style="background:#FF444422;color:#FF4444;border:1px solid #FF4444">OUTLIER</span>':'<span style="color:#567898">normal</span>')+'</div>';
+    html += '<div style="font-size:11px;color:#8ABEDF">Congestionamento: z='+outCong.lastZ.toFixed(2)+' '+
+      (outCong.isOutlierNow?'<span class="alert-state" style="background:#FF444422;color:#FF4444;border:1px solid #FF4444">OUTLIER</span>':'<span style="color:#567898">normal</span>')+'</div>';
+  }
+
+  html += '</div>';
+  return html;
 }
 
 /* ── Personas ─────────────────────────────────────────────────────── */
