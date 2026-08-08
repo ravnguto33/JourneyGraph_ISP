@@ -1326,25 +1326,94 @@ function _detRenderMain(){
   }
   html += '</div>';
 
+  // ── Fase 2: bloqueio de voz/VoLTE (Bernoulli genuino) + tempo (Gama exato) ──
+  html += '<div class="det-card"><div class="det-card-title">Fase 2 — Bloqueio de voz/VoLTE (evento genuíno: chamadas × completamento_voz)</div>';
+  html += '<div class="det-stat-row"><span>NQA de voz de referência</span><b>'+fmtPct(dc.nqa_voz)+'</b></div>';
+  html += '</div>';
+
+  [['voz_janelas_400', 400], ['voz_janelas_1600', 1600]].forEach(function(par){
+    var janelas = r[par[0]];
+    var alarmes = janelas.filter(function(w){return w.alarme_bloqueio;});
+    html += '<div class="det-card"><div class="det-card-title">Bloqueio de voz — janela de '+fmtN(par[1])+' chamadas ('+janelas.length+' janela(s), '+alarmes.length+' alarme(s))</div>';
+    html += _detChartSvg(janelas, dc.nqa_voz, 'p_hat_bloqueio', 'alarme_bloqueio', 'p_valor_bloqueio');
+    if(alarmes.length){
+      alarmes.slice(0, 15).forEach(function(w){
+        html += '<div class="det-alarm-row"><span class="det-alarm-badge">ALARME</span>'+
+          '<span>'+w.dia_inicio+' a '+w.dia_fim+' — '+fmtN(w.k_bloqueadas)+'/'+fmtN(w.n_chamadas)+' chamadas bloqueadas ('+fmtPct(w.p_hat_bloqueio)+'), p='+w.p_valor_bloqueio.toExponential(2)+'</span></div>';
+      });
+      if(alarmes.length>15) html += '<div style="font-size:10px;color:#3A6080;margin-top:4px">+'+(alarmes.length-15)+' alarme(s) adicional(is) não exibido(s).</div>';
+    } else {
+      html += '<div style="font-size:11px;color:#3A6080">Nenhuma janela cruzou o erro-alvo ('+dc.erro_alvo+') neste recurso.</div>';
+    }
+    html += '</div>';
+  });
+
+  html += '<div class="det-card"><div class="det-card-title">Tempo de conversa — teste Gama exato (soma aditiva, sem aproximação normal)</div>';
+  var alarmesGama = (r.voz_janelas_400||[]).concat(r.voz_janelas_1600||[]).filter(function(w){return w.alarme_gama;});
+  html += _detGamaChartSvg(r.voz_janelas_400);
+  if(alarmesGama.length){
+    alarmesGama.slice(0,15).forEach(function(w){
+      html += '<div class="det-alarm-row"><span class="det-alarm-badge">ALARME</span>'+
+        '<span>'+w.dia_inicio+' a '+w.dia_fim+' — média de conversa '+w.media_conversacao_seg+'s, p='+w.p_valor_gama.toExponential(2)+'</span></div>';
+    });
+    if(alarmesGama.length>15) html += '<div style="font-size:10px;color:#3A6080;margin-top:4px">+'+(alarmesGama.length-15)+' alarme(s) adicional(is) não exibido(s).</div>';
+  } else {
+    html += '<div style="font-size:11px;color:#3A6080">Nenhuma janela cruzou o erro-alvo ('+dc.erro_alvo+') neste recurso.</div>';
+  }
+  html += '</div>';
+
+  html += '<div class="det-card"><div class="det-card-title">Engset — cruzamento ilustrativo (não é alarme por janela)</div>';
+  html += '<div style="font-size:10.5px;color:#8ABEDF;margin-bottom:6px">Capacidade e fator de hora-pico são PREMISSAS ilustrativas, não dado de engenharia validado. N de fontes é o número real de assinantes distintos observados no CDR deste site.</div>';
+  html += '<div class="det-stat-row"><span>Setores neste site</span><b>'+r.engset.n_setores+'</b></div>';
+  html += '<div class="det-stat-row"><span>Capacidade assumida (canais de voz)</span><b>'+fmtN(r.engset.capacidade_assumida)+'</b></div>';
+  html += '<div class="det-stat-row"><span>N de fontes finitas (assinantes distintos reais)</span><b>'+fmtN(r.engset.n_fontes)+'</b></div>';
+  html += '<div class="det-stat-row"><span>Tráfego ofertado (24h média → hora-pico ilustrativa, ×3)</span><b>'+r.engset.trafego_erlangs_24h+' → '+r.engset.trafego_erlangs_hora_pico+' Erlang</b></div>';
+  html += '<div class="det-stat-row"><span>Blocking teórico (Engset, dada a capacidade assumida)</span><b>'+fmtPct(r.engset.blocking_engset_teorico)+'</b></div>';
+  html += '<div class="det-stat-row"><span>Blocking realizado observado (Binomial genuíno)</span><b style="color:#E87000">'+fmtPct(r.engset.blocking_realizado_observado)+'</b></div>';
+  html += '<div class="rgj-note">Gap grande entre teórico e observado é esperado e informativo aqui: a capacidade assumida é generosa o suficiente para tornar o bloqueio por radiofrequência teoricamente desprezível — o "não completamento" realizado observado provavelmente reflete outras causas (falha de sinalização, handover, etc.), não exaustão pura de capacidade sob esta premissa.</div>';
+  html += '</div>';
+
   html += '<div class="rgj-note">'+dc.metodologia+'</div>';
 
   main.innerHTML = html;
 }
-function _detChartSvg(janelas, nqa){
+function _detChartSvg(janelas, nqa, campoValor, campoAlarme, campoPvalor){
+  campoValor = campoValor || 'p_hat'; campoAlarme = campoAlarme || 'alarme'; campoPvalor = campoPvalor || 'p_valor';
   var W=680, H=140, padL=40, padR=8, padT=10, padB=18;
   var n = janelas.length;
   if(!n) return '<div style="font-size:11px;color:#3A6080">Sem janelas suficientes.</div>';
   var x = function(i){ return padL + (W-padL-padR) * (n<=1?0:i/(n-1)); };
-  var hi = Math.max(nqa*2, Math.max.apply(null, janelas.map(function(w){return w.p_hat;})) * 1.15);
+  var hi = Math.max(nqa*2, Math.max.apply(null, janelas.map(function(w){return w[campoValor];})) * 1.15);
   var y = function(v){ return H-padB - (H-padT-padB) * (v/hi); };
   var svg = '<svg class="det-chart-svg" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">';
   svg += '<text x="2" y="'+(y(hi)+4)+'" font-size="9" fill="#3A6080">'+fmtPct(hi)+'</text>';
   svg += '<line x1="'+padL+'" y1="'+y(nqa)+'" x2="'+(W-padR)+'" y2="'+y(nqa)+'" stroke="#E8B000" stroke-width="1" stroke-dasharray="4 3"/>';
   svg += '<text x="2" y="'+(y(nqa)+3)+'" font-size="9" fill="#E8B000">NQA</text>';
   janelas.forEach(function(w,i){
-    var r = w.alarme ? 4 : 2;
-    svg += '<circle cx="'+x(i)+'" cy="'+y(w.p_hat)+'" r="'+r+'" fill="'+(w.alarme?'#FF4444':'#1E90FF')+'" opacity="'+(w.alarme?1:0.55)+'">'+
-      '<title>'+w.dia_inicio+' a '+w.dia_fim+': p̂='+fmtPct(w.p_hat)+(w.alarme?' · ALARME (p='+w.p_valor.toExponential(2)+')':'')+'</title></circle>';
+    var alarme = w[campoAlarme];
+    var val = w[campoValor];
+    var r = alarme ? 4 : 2;
+    svg += '<circle cx="'+x(i)+'" cy="'+y(val)+'" r="'+r+'" fill="'+(alarme?'#FF4444':'#1E90FF')+'" opacity="'+(alarme?1:0.55)+'">'+
+      '<title>'+w.dia_inicio+' a '+w.dia_fim+': p̂='+fmtPct(val)+(alarme?' · ALARME (p='+w[campoPvalor].toExponential(2)+')':'')+'</title></circle>';
+  });
+  svg += '</svg>';
+  return svg;
+}
+function _detGamaChartSvg(janelas){
+  var W=680, H=140, padL=40, padR=8, padT=10, padB=18;
+  var n = janelas.length;
+  if(!n) return '<div style="font-size:11px;color:#3A6080">Sem janelas suficientes.</div>';
+  var x = function(i){ return padL + (W-padL-padR) * (n<=1?0:i/(n-1)); };
+  var vals = janelas.map(function(w){return w.media_conversacao_seg;});
+  var lo = Math.min.apply(null, vals) * 0.9, hi = Math.max.apply(null, vals) * 1.1;
+  var y = function(v){ return H-padB - (H-padT-padB) * (hi<=lo?0.5:(v-lo)/(hi-lo)); };
+  var svg = '<svg class="det-chart-svg" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">';
+  svg += '<text x="2" y="'+(y(hi)+4)+'" font-size="9" fill="#3A6080">'+hi.toFixed(0)+'s</text>';
+  svg += '<text x="2" y="'+(y(lo)+4)+'" font-size="9" fill="#3A6080">'+lo.toFixed(0)+'s</text>';
+  janelas.forEach(function(w,i){
+    var r = w.alarme_gama ? 4 : 2;
+    svg += '<circle cx="'+x(i)+'" cy="'+y(w.media_conversacao_seg)+'" r="'+r+'" fill="'+(w.alarme_gama?'#FF4444':'#2ECC71')+'" opacity="'+(w.alarme_gama?1:0.55)+'">'+
+      '<title>'+w.dia_inicio+' a '+w.dia_fim+': média='+w.media_conversacao_seg+'s'+(w.alarme_gama?' · ALARME (p='+w.p_valor_gama.toExponential(2)+')':'')+'</title></circle>';
   });
   svg += '</svg>';
   return svg;
