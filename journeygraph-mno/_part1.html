@@ -116,6 +116,26 @@ body.screen-graph #iped-filter-group{display:flex !important;}
 .out-sens-row{display:flex;align-items:center;gap:8px;font-size:11px;color:#8ABEDF;margin-bottom:10px;}
 .out-sens-row input[type=range]{flex:1;max-width:180px;}
 
+/* Detecção CDR (eventos sucessivos + limiar estatístico exato) */
+#screen-deteccao{padding:16px;overflow-y:auto;background:#08111E;}
+#deteccao-content{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
+.det-node-list{flex:0 0 240px;background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:10px;max-height:680px;overflow-y:auto;}
+.det-node-btn{display:block;width:100%;text-align:left;background:none;border:none;color:#A0C8E4;font-size:12px;padding:7px 8px;border-radius:5px;cursor:pointer;font-family:inherit;margin-bottom:2px;}
+.det-node-btn:hover{background:#0F1E30;}
+.det-node-btn.active{background:#1A3050;color:#F0F8FF;}
+.det-node-id{font-weight:700;display:flex;align-items:center;gap:5px;}
+.det-node-sub{font-size:10px;color:#567898;margin-top:2px;}
+.det-incident-dot{width:8px;height:8px;border-radius:50%;background:#FF4444;flex-shrink:0;}
+.det-main{flex:1;min-width:440px;}
+.det-card{background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:12px;margin-bottom:12px;}
+.det-card-title{font-size:12px;color:#D0E8FF;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;}
+.det-incident-banner{background:#2A0F0F;border:1px solid #FF4444;border-radius:6px;padding:10px 12px;font-size:11.5px;color:#FFB0A8;line-height:1.5;margin-bottom:12px;}
+.det-chart-svg{width:100%;height:150px;overflow:visible;}
+.det-alarm-row{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid #0A1422;font-size:11px;color:#A0C8E4;}
+.det-alarm-badge{flex-shrink:0;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;background:#FF444422;color:#FF4444;border:1px solid #FF4444;}
+.det-stat-row{display:flex;justify-content:space-between;font-size:11.5px;color:#8ABEDF;padding:3px 0;}
+.det-stat-row b{color:#D0E8FF;}
+
 /* Mapa */
 #screen-map{overflow:hidden !important;}
 #map-leaflet{position:absolute;inset:0;}
@@ -242,6 +262,7 @@ body.screen-map #left-col, body.screen-map #cat-sidebar { display:none !importan
 body.screen-rgjourney #cat-sidebar { display:none !important; }
 body.screen-rede #cat-sidebar, body.screen-rede #left-col { display:none !important; }
 body.screen-outliers #cat-sidebar, body.screen-outliers #left-col { display:none !important; }
+body.screen-deteccao #cat-sidebar, body.screen-deteccao #left-col { display:none !important; }
 
 /* ── RESPONSIVIDADE ── */
 .sidebar-toggle-btn{display:none;}
@@ -311,6 +332,7 @@ body.screen-outliers #cat-sidebar, body.screen-outliers #left-col { display:none
       <button class="nav-btn" data-screen="rgjourney">&#128257; Jornada RG</button>
       <button class="nav-btn" data-screen="rede">&#128225; Rede</button>
       <button class="nav-btn" data-screen="outliers">&#128200; Outliers</button>
+      <button class="nav-btn" data-screen="deteccao">&#128276; Detecção CDR</button>
       <button class="nav-btn" data-screen="personas">&#128100; Personas</button>
       <button class="nav-btn" data-screen="quality">&#9670; Qualidade</button>
       <button class="nav-btn" data-screen="alerts">&#9888; Alertas</button>
@@ -395,6 +417,10 @@ body.screen-outliers #cat-sidebar, body.screen-outliers #left-col { display:none
 
     <div class="screen" id="screen-outliers">
       <div id="outliers-content"></div>
+    </div>
+
+    <div class="screen" id="screen-deteccao">
+      <div id="deteccao-content"></div>
     </div>
 
     <div class="screen" id="screen-personas"><div id="personas-grid" class="personas-grid"></div></div>

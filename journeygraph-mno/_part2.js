@@ -90,6 +90,7 @@ function switchScreen(name){
   if(name==='rgjourney') renderRGJourney();
   if(name==='rede') renderRede();
   if(name==='outliers') renderOutliers();
+  if(name==='deteccao') renderDeteccao();
   if(name==='personas') renderPersonas();
   if(name==='quality') renderQuality();
   if(name==='alerts') renderAlerts();
@@ -1239,6 +1240,111 @@ function _outChartSvg(dias, vals, mad, bayes, cor, isPct){
     svg += '<circle cx="'+x(i)+'" cy="'+y(v)+'" r="'+r+'" fill="'+(madOut?'#FF4444':cor)+'" '+
       (bClasse==='forte' ? 'stroke="#FF4444" stroke-width="2"' : bClasse==='fraca' ? 'stroke="#F0C000" stroke-width="2"' : 'stroke="#050C16" stroke-width="1"')+'>'+
       '<title>'+dias[i]+': '+fmt(v)+(madOut?' · outlier MAD':'')+(bClasse!=='normal'?' · Bayes '+bClasse+' (z='+bayes[i].z.toFixed(2)+')':'')+'</title></circle>';
+  });
+  svg += '</svg>';
+  return svg;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Detecção CDR-a-CDR — porta da metodologia real do CDRVIEW: dois
+   algoritmos de alarme (eventos sucessivos + limiar estatístico por
+   janela) sobre CDR bruto, com distribuição EXATA (binomial/beta), não
+   aproximação normal nem estatística robusta não-paramétrica (MAD/Bayes
+   recursivo, usados no resto do produto). Todo o cálculo pesado
+   (realização Bernoulli, testes exatos por janela) já vem pronto do
+   pipeline em RAW.deteccao_cdr — aqui só renderiza. ────────────────── */
+var _detSelecionado = null;
+function renderDeteccao(){
+  var dc = RAW.deteccao_cdr;
+  var ids = Object.keys(dc.recursos).sort();
+  if(!_detSelecionado) _detSelecionado = dc.incidente && dc.recursos[dc.incidente.site] ? dc.incidente.site : ids[0];
+
+  var listHtml = '<div class="det-node-list">';
+  listHtml += '<div class="out-node-group-label">Recursos cadastrados ('+ids.length+')</div>';
+  ids.forEach(function(id){
+    var r = dc.recursos[id];
+    var nAlarmes = r.n_alarmes_100 + r.n_alarmes_400 + r.eventos_sucessivos.length;
+    var ativo = id===_detSelecionado;
+    listHtml += '<button class="det-node-btn'+(ativo?' active':'')+'" onclick="_detSelecionar(\''+id+'\')">'+
+      '<div class="det-node-id">'+id+(r.tem_incidente_conhecido?'<span class="det-incident-dot" title="Incidente conhecido"></span>':'')+'</div>'+
+      '<div class="det-node-sub">'+fmtN(r.n_cdrs_total)+' CDR · '+(r.cadastrado?'cadastrado '+r.cadastro_dia:'não cadastrado')+' · '+nAlarmes+' alarme(s)</div>'+
+      '</button>';
+  });
+  listHtml += '</div>';
+
+  document.getElementById('deteccao-content').innerHTML = listHtml + '<div class="det-main" id="det-main"></div>';
+  _detRenderMain();
+}
+function _detSelecionar(id){
+  _detSelecionado = id;
+  renderDeteccao();
+}
+function _detRenderMain(){
+  var dc = RAW.deteccao_cdr;
+  var r = dc.recursos[_detSelecionado];
+  var main = document.getElementById('det-main');
+  if(!r){ main.innerHTML=''; return; }
+
+  var html = '';
+  if(r.tem_incidente_conhecido){
+    html += '<div class="det-incident-banner"><b>&#9888; Cenário de incidente conhecido aplicado a este site ('+dc.incidente.dia_inicio+' a '+dc.incidente.dia_fim+')</b><br>'+dc.incidente.descricao+'</div>';
+  }
+
+  html += '<div class="det-card"><div class="det-card-title">'+_detSelecionado+'</div>';
+  html += '<div class="det-stat-row"><span>CDRs observados</span><b>'+fmtN(r.n_cdrs_total)+'</b></div>';
+  html += '<div class="det-stat-row"><span>Cadastro dinâmico</span><b>'+(r.cadastrado?'ativo desde '+r.cadastro_dia+' (após acumular '+fmtN(dc.min_cadastro)+' CDR)':'ainda não atingiu '+fmtN(dc.min_cadastro)+' CDR')+'</b></div>';
+  html += '<div class="det-stat-row"><span>Taxa empírica observada (Bernoulli realizado)</span><b>'+fmtPct(r.taxa_empirica)+'</b></div>';
+  html += '<div class="det-stat-row"><span>NQA de referência</span><b>'+fmtPct(dc.nqa)+'</b></div>';
+  html += '<div class="det-stat-row"><span>K de eventos sucessivos (p̂^K &lt; '+dc.erro_alvo+')</span><b>'+r.k_eventos_sucessivos+'</b></div>';
+  html += '</div>';
+
+  ['janelas_100', 'janelas_400'].forEach(function(campo){
+    var tam = campo==='janelas_100' ? 100 : 400;
+    var janelas = r[campo];
+    var alarmes = janelas.filter(function(w){return w.alarme;});
+    html += '<div class="det-card"><div class="det-card-title">Limiar estatístico — janela de '+tam+' CDR ('+janelas.length+' janela(s), '+alarmes.length+' alarme(s))</div>';
+    html += _detChartSvg(janelas, dc.nqa);
+    if(alarmes.length){
+      alarmes.slice(0, 15).forEach(function(w){
+        html += '<div class="det-alarm-row"><span class="det-alarm-badge">ALARME</span>'+
+          '<span>'+w.dia_inicio+' a '+w.dia_fim+' — k='+w.k+'/'+w.n+' ('+fmtPct(w.p_hat)+'), p='+w.p_valor.toExponential(2)+', IC 99,9999%: ['+fmtPct(w.ic_inf)+'; '+fmtPct(w.ic_sup)+']</span></div>';
+      });
+      if(alarmes.length>15) html += '<div style="font-size:10px;color:#3A6080;margin-top:4px">+'+(alarmes.length-15)+' alarme(s) adicional(is) não exibido(s).</div>';
+    } else {
+      html += '<div style="font-size:11px;color:#3A6080">Nenhuma janela cruzou o erro-alvo ('+dc.erro_alvo+') neste recurso.</div>';
+    }
+    html += '</div>';
+  });
+
+  html += '<div class="det-card"><div class="det-card-title">Eventos sucessivos (K='+r.k_eventos_sucessivos+' consecutivos)</div>';
+  if(r.eventos_sucessivos.length){
+    r.eventos_sucessivos.forEach(function(e){
+      html += '<div class="det-alarm-row"><span class="det-alarm-badge">ALARME</span><span>'+e.dia_inicio+' a '+e.dia_fim+' — run de '+e.tamanho_run+' evento(s) consecutivo(s)</span></div>';
+    });
+  } else {
+    html += '<div style="font-size:11px;color:#3A6080">Nenhum run de '+r.k_eventos_sucessivos+' eventos consecutivos observado neste recurso.</div>';
+  }
+  html += '</div>';
+
+  html += '<div class="rgj-note">'+dc.metodologia+'</div>';
+
+  main.innerHTML = html;
+}
+function _detChartSvg(janelas, nqa){
+  var W=680, H=140, padL=40, padR=8, padT=10, padB=18;
+  var n = janelas.length;
+  if(!n) return '<div style="font-size:11px;color:#3A6080">Sem janelas suficientes.</div>';
+  var x = function(i){ return padL + (W-padL-padR) * (n<=1?0:i/(n-1)); };
+  var hi = Math.max(nqa*2, Math.max.apply(null, janelas.map(function(w){return w.p_hat;})) * 1.15);
+  var y = function(v){ return H-padB - (H-padT-padB) * (v/hi); };
+  var svg = '<svg class="det-chart-svg" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">';
+  svg += '<text x="2" y="'+(y(hi)+4)+'" font-size="9" fill="#3A6080">'+fmtPct(hi)+'</text>';
+  svg += '<line x1="'+padL+'" y1="'+y(nqa)+'" x2="'+(W-padR)+'" y2="'+y(nqa)+'" stroke="#E8B000" stroke-width="1" stroke-dasharray="4 3"/>';
+  svg += '<text x="2" y="'+(y(nqa)+3)+'" font-size="9" fill="#E8B000">NQA</text>';
+  janelas.forEach(function(w,i){
+    var r = w.alarme ? 4 : 2;
+    svg += '<circle cx="'+x(i)+'" cy="'+y(w.p_hat)+'" r="'+r+'" fill="'+(w.alarme?'#FF4444':'#1E90FF')+'" opacity="'+(w.alarme?1:0.55)+'">'+
+      '<title>'+w.dia_inicio+' a '+w.dia_fim+': p̂='+fmtPct(w.p_hat)+(w.alarme?' · ALARME (p='+w.p_valor.toExponential(2)+')':'')+'</title></circle>';
   });
   svg += '</svg>';
   return svg;
