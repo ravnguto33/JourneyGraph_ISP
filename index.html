@@ -617,7 +617,6 @@ body{
   function submitGate(){
     var val = document.getElementById('gate-pass').value;
     if(val === GATE_PASS){
-      try{ sessionStorage.setItem('visentLoungeAuth','ok'); }catch(e){}
       var p = pending;
       closeGate();
       if(p){
@@ -632,9 +631,7 @@ body{
   document.addEventListener('DOMContentLoaded', function(){
     document.querySelectorAll('.sol-ctas a[href]').forEach(function(a){
       a.addEventListener('click', function(ev){
-        var authed = false;
-        try{ authed = sessionStorage.getItem('visentLoungeAuth') === 'ok'; }catch(e){}
-        if(authed) return; // já autenticado nesta sessão do navegador
+        // sempre pede a senha, mesmo repetindo o mesmo app — sem persistência
         ev.preventDefault();
         openGate(a.getAttribute('href'), a.getAttribute('target'));
       });
