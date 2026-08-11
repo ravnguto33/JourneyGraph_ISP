@@ -132,6 +132,21 @@ body{
   #howrow{grid-template-columns:1fr;}
   #topnav{display:none;}
 }
+
+/* ── GATE DE SENHA POR APLICAÇÃO ── */
+#gate-overlay{display:none;position:fixed;inset:0;background:rgba(4,8,14,.75);backdrop-filter:blur(3px);z-index:200;align-items:center;justify-content:center;padding:20px;}
+#gate-overlay.open{display:flex;}
+#gate-box{background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:26px 28px;max-width:380px;width:100%;box-shadow:0 12px 50px rgba(0,0,0,.6);}
+#gate-box h2{font-size:15px;color:#F0F8FF;margin-bottom:6px;}
+#gate-box p{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:16px;}
+#gate-box label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;}
+#gate-pass{width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:9px 11px;font-size:14px;font-family:inherit;box-sizing:border-box;}
+#gate-err{color:#FF6B5B;font-size:11.5px;margin-top:8px;display:none;}
+#gate-actions{display:flex;gap:10px;margin-top:18px;}
+#gate-actions button{font-family:inherit;font-size:13px;font-weight:700;padding:10px;border-radius:7px;cursor:pointer;border:1px solid transparent;}
+#gate-submit{flex:1;background:var(--accent);color:#fff;border:none;}
+#gate-submit:hover{background:#ff7e10;}
+#gate-cancel{background:transparent;border:1px solid var(--border);color:var(--muted);}
 </style>
 </head>
 <body>
@@ -237,7 +252,7 @@ body{
     <div class="sol-body">
       <span class="sol-kicker">CDRView MNO Edition · Jornada do assinante móvel</span>
       <h2 class="sol-title">Journey<span class="hi">Graph</span> MNO Edition</h2>
-      <p class="sol-desc">A mesma arquitetura de dígrafo, Painel de Alertas e Assistente do JourneyGraph ISP Edition, aplicada à jornada do assinante <b>móvel</b> — CDR de voz/dados/SMS sobre antenas reais licenciadas pela Anatel, filtradas por operadora, para a praça de Brasília (DF). Segunda cidade da arquitetura multi-cidade do CDRView PERSONAS Module (a primeira, Florianópolis, é o JourneyGraph ISP fixo).</p>
+      <p class="sol-desc">Arquitetura de dígrafo, Painel de Alertas e Assistente aplicada à jornada do assinante <b>móvel</b> — CDR de voz/dados/SMS sobre antenas reais licenciadas pela Anatel, filtradas por operadora e cidade.</p>
       <div class="sol-tags">
         <span>CDR móvel + Antenas Anatel reais</span><span>Mapa Leaflet · Regiões Administrativas do DF</span><span>4 personas · K-Means + XGBoost</span><span>Markov + Bayes por persona</span>
       </div>
@@ -568,6 +583,73 @@ body{
     </div>
   </div>
 </footer>
+
+<div id="gate-overlay">
+  <div id="gate-box">
+    <h2>Acesso à aplicação</h2>
+    <p>Esta é uma demonstração restrita. Informe a senha de entrada para continuar.</p>
+    <label for="gate-pass">Senha</label>
+    <input type="password" id="gate-pass" placeholder="Senha de acesso" autocomplete="off">
+    <div id="gate-err">Senha incorreta.</div>
+    <div id="gate-actions">
+      <button id="gate-submit">Entrar</button>
+      <button id="gate-cancel">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var GATE_PASS = 'egl00';
+  var pending = null; // {href, target}
+
+  function openGate(href, target){
+    pending = {href:href, target:target};
+    document.getElementById('gate-err').style.display = 'none';
+    document.getElementById('gate-pass').value = '';
+    document.getElementById('gate-overlay').classList.add('open');
+    document.getElementById('gate-pass').focus();
+  }
+  function closeGate(){
+    document.getElementById('gate-overlay').classList.remove('open');
+    pending = null;
+  }
+  function submitGate(){
+    var val = document.getElementById('gate-pass').value;
+    if(val === GATE_PASS){
+      try{ sessionStorage.setItem('visentLoungeAuth','ok'); }catch(e){}
+      var p = pending;
+      closeGate();
+      if(p){
+        if(p.target === '_blank'){ window.open(p.href, '_blank', 'noopener'); }
+        else{ window.location.href = p.href; }
+      }
+    } else {
+      document.getElementById('gate-err').style.display = 'block';
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    document.querySelectorAll('.sol-ctas a[href]').forEach(function(a){
+      a.addEventListener('click', function(ev){
+        var authed = false;
+        try{ authed = sessionStorage.getItem('visentLoungeAuth') === 'ok'; }catch(e){}
+        if(authed) return; // já autenticado nesta sessão do navegador
+        ev.preventDefault();
+        openGate(a.getAttribute('href'), a.getAttribute('target'));
+      });
+    });
+    document.getElementById('gate-submit').addEventListener('click', submitGate);
+    document.getElementById('gate-cancel').addEventListener('click', closeGate);
+    document.getElementById('gate-pass').addEventListener('keydown', function(ev){
+      if(ev.key === 'Enter') submitGate();
+    });
+    document.getElementById('gate-overlay').addEventListener('click', function(ev){
+      if(ev.target.id === 'gate-overlay') closeGate();
+    });
+  });
+})();
+</script>
 
 </body>
 </html>
