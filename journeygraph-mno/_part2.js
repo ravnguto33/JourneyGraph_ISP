@@ -85,6 +85,7 @@ function switchScreen(name){
   document.body.className = 'screen-'+name;
   _closeAllSidebars();
   if(name==='overview') renderOverview();
+  if(name==='glossario') renderGlossario();
   if(name==='graph'){ renderMetrics(); renderGraph(); }
   if(name==='map'){ renderMetrics(); renderMap(); }
   if(name==='rgjourney') renderRGJourney();
@@ -159,6 +160,133 @@ function _setPersonaFilter(pid){
   if(S.screen==='rgjourney') renderRGJourney();
 }
 
+/* ── Filtros compartilhados: Dispositivos/Pessoas, Segmento, Cluster,
+   Dia + Período. Aplicados em Dígrafo, Mapa, Qualidade (todos) e
+   Rede/Outliers (só dia+período, via série real de series_rede). ──── */
+Object.assign(S, { segmento:'all', clusters:null, dia:'all', periodo:'all',
+  peopleMode:'devices', peopleParams:{m:1,c:1,p:1}, nodeMin:null, nodeMax:null });
+
+function peopleVal(n){
+  if(S.peopleMode!=='pessoas') return n;
+  return n * S.peopleParams.m * S.peopleParams.c * S.peopleParams.p;
+}
+function fmtPeople(n){ return fmtN(Math.round(peopleVal(n))); }
+
+function _refreshCurrentScreen(){
+  if(S.screen==='graph') renderGraph();
+  else if(S.screen==='map') renderMap();
+  else if(S.screen==='rgjourney') renderRGJourney();
+  else if(S.screen==='rede') renderRede();
+  else if(S.screen==='outliers') _outRenderMain();
+  else if(S.screen==='quality') renderQuality();
+}
+
+function _setPeopleMode(mode){
+  S.peopleMode = mode;
+  document.querySelectorAll('.people-mode-btn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-mode')===mode); });
+  _refreshCurrentScreen();
+}
+function _updatePeopleParamsSummary(){
+  var el = document.getElementById('people-params-summary');
+  if(!el) return;
+  var pp = S.peopleParams;
+  el.textContent = S.peopleMode==='pessoas' ? ('m='+Math.round(pp.m*100)+'% · c='+Math.round(pp.c*100)+'% · p='+Math.round(pp.p*100)+'%') : '';
+}
+function _configurePeopleParams(){
+  var pp = S.peopleParams;
+  var m = parseFloat(window.prompt('Market share da operadora, em % (m)', String(Math.round(pp.m*100))));
+  var c = parseFloat(window.prompt('Parcela de dispositivos não-IoT, em % (c)', String(Math.round(pp.c*100))));
+  var p = parseFloat(window.prompt('Penetração de celular na população, em % (p)', String(Math.round(pp.p*100))));
+  if(!isNaN(m)) pp.m = Math.max(0, m/100);
+  if(!isNaN(c)) pp.c = Math.max(0, c/100);
+  if(!isNaN(p)) pp.p = Math.max(0, p/100);
+  _updatePeopleParamsSummary();
+  _refreshCurrentScreen();
+}
+
+function _setSegmento(seg){
+  S.segmento = seg;
+  document.querySelectorAll('#segmento-filter-group .fbtn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-seg')===seg); });
+  _refreshCurrentScreen();
+}
+
+function buildClusterFilter(){
+  S.clusters = null;
+  var wrap = document.getElementById('cluster-filter-list');
+  var html = '<label class="cl-item"><input type="checkbox" id="cluster-filter-all-cb" checked onchange="_setClusterAll(this.checked)"><b>Todos</b></label>';
+  RAW.nodes.forEach(function(n){
+    html += '<label class="cl-item"><input type="checkbox" class="cl-node-cb" value="'+n.id+'" checked onchange="_toggleCluster()">'+
+      n.id.replace('CLUSTER_','')+' · '+(n.area_nome||'')+'</label>';
+  });
+  wrap.innerHTML = html;
+}
+function _setClusterAll(checked){
+  document.querySelectorAll('.cl-node-cb').forEach(function(cb){ cb.checked = checked; });
+  S.clusters = checked ? null : [];
+  _refreshCurrentScreen();
+}
+function _toggleCluster(){
+  var all = Array.prototype.slice.call(document.querySelectorAll('.cl-node-cb'));
+  var checked = all.filter(function(cb){ return cb.checked; }).map(function(cb){ return cb.value; });
+  var allCb = document.getElementById('cluster-filter-all-cb');
+  if(checked.length===all.length){ S.clusters=null; if(allCb) allCb.checked=true; }
+  else { S.clusters=checked; if(allCb) allCb.checked=false; }
+  _refreshCurrentScreen();
+}
+
+function buildDiaPeriodoFilter(){
+  var sel = document.getElementById('dia-filter-select');
+  var dias = (RAW.personas_daily && RAW.personas_daily.dias) || [];
+  var html = '<option value="all">Todos os dias</option>';
+  dias.forEach(function(d,i){ html += '<option value="'+i+'">'+d+'</option>'; });
+  sel.innerHTML = html;
+}
+function _setDia(v){ S.dia = v==='all' ? 'all' : parseInt(v,10); _refreshCurrentScreen(); }
+function _setPeriodo(v){ S.periodo = v; _refreshCurrentScreen(); }
+
+function _clusterAllowed(id){ return S.clusters==null || S.clusters.indexOf(id)!==-1; }
+
+/* Retorna nodes (clones) já filtrados por cluster, com n_usuarios/drop/cong
+   ajustados por dia (série sintética diária) e por segmento (mix_segmento). */
+function _filteredNodesForDisplay(){
+  return RAW.nodes.filter(function(n){ return _clusterAllowed(n.id); }).map(function(n){
+    var nn = Object.assign({}, n);
+    if(S.dia!=='all' && n.daily){
+      nn.n_usuarios = n.daily.n_usuarios[S.dia];
+      nn.drop_medio = n.daily.drop_medio[S.dia];
+      nn.cong_medio = n.daily.cong_medio[S.dia];
+    }
+    if(S.segmento!=='all' && n.mix_segmento){
+      var share = n.mix_segmento[S.segmento] / (n.n_usuarios||1);
+      nn.n_usuarios = Math.round(nn.n_usuarios * share);
+    }
+    nn.n_usuarios = Math.round(peopleVal(nn.n_usuarios));
+    return nn;
+  });
+}
+/* Retorna edges (clones) filtrados por dia/segmento/período, restritos aos
+   nodes ainda presentes em nodeIdSet (pós-filtro de cluster). */
+function _filteredEdgesForDisplay(nodeIdSet){
+  return RAW.edges.filter(function(e){
+    return !nodeIdSet || (nodeIdSet[e.source] && nodeIdSet[e.target]);
+  }).map(function(e){
+    var ee = Object.assign({}, e);
+    if(S.dia!=='all' && e.daily){
+      ee.n_usuarios = e.daily.n_usuarios[S.dia];
+      ee.n_viagens = e.daily.n_viagens[S.dia];
+      ee.periodo_predominante = e.daily.periodo_predominante[S.dia];
+    }
+    if(S.segmento!=='all' && e.mix_segmento){
+      var share = e.mix_segmento[S.segmento] / (e.n_usuarios||1);
+      ee.n_usuarios = Math.round(ee.n_usuarios * share);
+    }
+    ee.n_usuarios = Math.round(peopleVal(ee.n_usuarios));
+    return ee;
+  }).filter(function(e){
+    return S.periodo==='all' || e.periodo_predominante===S.periodo;
+  });
+}
+
 /* ── Metrics (só na aba Dígrafo) ──────────────────────────────────── */
 function renderMetrics(){
   var m = RAW.metadata;
@@ -170,10 +298,64 @@ function renderMetrics(){
   document.getElementById('metrics').innerHTML = html;
 }
 
+/* ── Gráfico de linha genérico (multi-série, N dias) — reusado em
+   Visão Geral (% por persona) e Sigma Topológico (Dígrafo/Jornada RG) ── */
+function _multiLineChartSvg(dias, series, colors, opts){
+  opts = opts || {};
+  var W = opts.w || 860, H = opts.h || 200, padL = opts.padL || 40, padR = opts.padR || 10, padT = 12, padB = 22;
+  var n = dias.length;
+  var allVals = [];
+  Object.keys(series).forEach(function(k){ series[k].forEach(function(v){ allVals.push(v); }); });
+  var lo = opts.lo != null ? opts.lo : Math.min(0, Math.min.apply(null, allVals));
+  var hi = opts.hi != null ? opts.hi : Math.max.apply(null, allVals) * 1.12;
+  if(hi<=lo) hi = lo + 1;
+  var x = function(i){ return padL + (W-padL-padR) * (n<=1?0:i/(n-1)); };
+  var y = function(v){ return H-padB - (H-padT-padB) * ((v-lo)/(hi-lo)); };
+  var fmtV = opts.fmtV || function(v){ return v.toFixed(1); };
+  var svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:'+H+'px;overflow:visible;">';
+  svg += '<line x1="'+padL+'" y1="'+padT+'" x2="'+(W-padR)+'" y2="'+padT+'" stroke="#1A3050"/>';
+  svg += '<text x="2" y="'+(padT+4)+'" font-size="9" fill="#3A6080">'+fmtV(hi)+'</text>';
+  svg += '<line x1="'+padL+'" y1="'+(H-padB)+'" x2="'+(W-padR)+'" y2="'+(H-padB)+'" stroke="#1A3050"/>';
+  svg += '<text x="2" y="'+(H-padB+3)+'" font-size="9" fill="#3A6080">'+fmtV(lo)+'</text>';
+  dias.forEach(function(d,i){
+    if(n<=10 || i%Math.ceil(n/10)===0 || i===n-1){
+      svg += '<text x="'+x(i).toFixed(1)+'" y="'+(H-4)+'" font-size="8" fill="#3A6080" text-anchor="middle">'+d.slice(5)+'</text>';
+    }
+  });
+  Object.keys(series).forEach(function(k){
+    var vals = series[k];
+    var pts = vals.map(function(v,i){ return x(i).toFixed(1)+','+y(v).toFixed(1); }).join(' ');
+    var color = colors[k] || '#1E90FF';
+    svg += '<polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="1.8" opacity="0.92"/>';
+    vals.forEach(function(v,i){
+      svg += '<circle cx="'+x(i).toFixed(1)+'" cy="'+y(v).toFixed(1)+'" r="2.2" fill="'+color+'">'+
+        '<title>'+k+' · '+dias[i]+': '+fmtV(v)+'</title></circle>';
+    });
+  });
+  svg += '</svg>';
+  return svg;
+}
+
 /* ── Visão Geral ──────────────────────────────────────────────────── */
 function renderOverview(){
   var m = RAW.metadata;
   var html = '<div class="insights-grid">';
+
+  if(RAW.personas_daily){
+    var pdSeries = {}, pdColors = {};
+    RAW.personas.forEach(function(p){
+      pdSeries[p.id] = RAW.personas_daily.by_persona[p.id];
+      pdColors[p.id] = '#'+p.cor_hex;
+    });
+    html += '<div class="ins-card" style="grid-column:1/-1;"><div class="ins-title">&#128200; % diário de pessoas por persona</div>'+
+      _multiLineChartSvg(RAW.personas_daily.dias, pdSeries, pdColors, {fmtV:function(v){return v.toFixed(1)+'%';}, hi:25}) +
+      '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;">'+
+      RAW.personas.map(function(p){
+        return '<span style="font-size:10.5px;color:#8ABEDF;display:inline-flex;align-items:center;gap:4px;">'+
+          '<span style="width:8px;height:8px;border-radius:50%;background:#'+p.cor_hex+';display:inline-block;"></span>'+p.id+' '+p.nome+'</span>';
+      }).join('') +
+      '</div><div style="margin-top:6px;font-size:10.5px;color:#3A6080">'+(RAW.metadata.nota_personas_daily||'')+'</div></div>';
+  }
 
   html += '<div class="ins-card"><div class="ins-title">&#128202; '+RAW.cidade.titulo+'</div>'+
     '<div class="ins-big">'+fmtN(m.n_subscribers)+'</div><div class="ins-sub">assinantes sintéticos · '+m.n_days+' dias · operadora '+m.operadora+'</div>'+
@@ -216,6 +398,48 @@ function renderOverview(){
   document.getElementById('overview-content').innerHTML = html;
 }
 
+/* ── Glossário ────────────────────────────────────────────────────── */
+var GLOSSARIO = [
+  {grupo:'Indicadores de qualidade', termo:'IPED', sigla:'Índice Ponderado de qualidade no DEslocamento', def:'Nota de 0 a 100 da qualidade de rede percebida ao longo de um trajeto (edge) entre dois clusters, combinando drop, congestionamento e completamento — mesma metodologia usada no StepGraph. Faixas: '+RAW.iped_faixas.map(function(f){return f.rotulo+' ('+f.valor_min+'–'+f.valor_max+')';}).join(', ')+'.'},
+  {grupo:'Indicadores de qualidade', termo:'NQA', sigla:'Nível de Qualidade Aceitável', def:'Limiar de referência (linha tracejada amarela nos gráficos de Detecção CDR) acima do qual uma taxa observada (bloqueio, erro) é considerada estatisticamente fora do padrão aceitável, disparando alarme.'},
+  {grupo:'Indicadores de qualidade', termo:'Vamping', sigla:null, def:'Indicador transversal (não é persona) de uso frequente do celular durante a madrugada (≥4 noites/semana) — proxy sintético de exposição noturna a telas.'},
+  {grupo:'Indicadores de qualidade', termo:'RAT', sigla:'Radio Access Technology', def:'Tecnologia de acesso rádio dominante em um trajeto/antena (ex.: LTE, NR/5G).'},
+  {grupo:'Indicadores de qualidade', termo:'ECGI', sigla:'E-UTRAN Cell Global Identifier', def:'Identificador global de uma célula/antena LTE — usado como chave das antenas Anatel reais na base de antenas deste app.'},
+  {grupo:'Métodos estatísticos', termo:'MAD', sigla:'Median Absolute Deviation (Desvio Absoluto Mediano)', def:'Método robusto de detecção de outlier: em vez de média/desvio-padrão (sensíveis a valores extremos), usa a mediana da série e a mediana dos desvios absolutos à mediana. Score z robusto = 0,6745×(x−mediana)/MAD; |z|>3,5 é sinalizado como outlier. Usado na aba Outliers e como um dos sinais de score em Alertas por Rede.'},
+  {grupo:'Métodos estatísticos', termo:'Cadeia de Markov', sigla:null, def:'Modelo em que o próximo estado (Normal/Atenção/Exceção/Crítico) depende só do estado atual, não do histórico completo. A "matriz de transição" mostra, para cada estado de origem, a probabilidade observada de ir para cada estado de destino — é uma estatística agregada sobre toda a janela de 15 dias, não algo que muda dia a dia (o que mudaria por dia seria o estado atual, não a matriz). Ver Alertas.'},
+  {grupo:'Métodos estatísticos', termo:'Probabilidade posterior (Bayes)', sigla:null, def:'No cálculo Bayesiano ingênuo (prior × verossimilhança, normalizado) usado no Painel de Alertas, é a probabilidade recalculada de cada causa candidata depois de considerar a evidência observada. A "maior posterior" é simplesmente a causa com a probabilidade mais alta entre as candidatas — a explicação mais provável dado o que foi observado, não uma certeza.'},
+  {grupo:'Métodos estatísticos', termo:'Sigma Index (Índice Sigma Topológico)', sigla:'σ(G)', def:'Índice topológico de grafo: σ(G) = Σ (grau(u) − grau(v))² somado sobre todas as arestas do grafo. Mede o quão heterogênea é a distribuição de grau — sobe quando o grafo tem hubs muito conectados ao lado de nós periféricos, desce quando os graus são parecidos. Calculado por dia nos gráficos de evolução do Dígrafo/Jornada RG.'},
+  {grupo:'Métodos estatísticos', termo:'K-Means / K-Means++', sigla:null, def:'Algoritmo de clustering que agrupa antenas/assinantes em k grupos (clusters geográficos) minimizando a distância dentro de cada grupo. K-Means++ é uma variante com inicialização mais estável dos centróides.'},
+  {grupo:'Alertas e priorização', termo:'Blast radius', sigla:null, def:'Contagem estimada de assinantes afetados a jusante (downstream) de um elemento de rede em falha/degradação, calculada dinamicamente a partir do rollup da topologia (Site→SGW→PGW→MME), não um limiar fixo predefinido.'},
+  {grupo:'Alertas e priorização', termo:'Score de prioridade', sigla:null, def:'Combinação de gravidade técnica (estado Markov, MAD) e impacto de negócio (assinantes afetados, segmento de alto valor) em uma nota 0–100 usada para ordenar alertas por rede.'},
+  {grupo:'Segmentação', termo:'Segmento', sigla:null, def:'Pós-pago, controle ou pré-pago — classificação comercial do assinante. Campo sintético (não vem do CDR real), gerado com pesos determinísticos por persona para viabilizar o filtro de Segmento.'},
+  {grupo:'Segmentação', termo:'Persona', sigla:null, def:'Perfil comportamental do assinante (9 no total: '+RAW.personas.map(function(p){return p.id+' '+p.nome;}).join(', ')+') curado a partir de padrões reais de uso de rede — não pesquisa de mercado.'},
+  {grupo:'Dados e escala', termo:'CDR', sigla:'Call Detail Record', def:'Registro detalhado de chamada/sessão (voz, dados, SMS) — a unidade bruta de dado de onde todas as métricas deste app são derivadas (sinteticamente, nesta demonstração).'},
+  {grupo:'Dados e escala', termo:'Dispositivos × Pessoas', sigla:null, def:'Os números brutos do app (n_usuarios) representam dispositivos/linhas observadas. Para estimar pessoas reais, aplique pessoas = dispositivos × m% (market share da operadora) × c% (parcela de dispositivos não-IoT) × p% (penetração de celular na população) — configurável no toggle Dispositivos/Pessoas dos Filtros.'}
+];
+function renderGlossario(){
+  var grupos = {};
+  GLOSSARIO.forEach(function(g){ (grupos[g.grupo]=grupos[g.grupo]||[]).push(g); });
+  var html = '<input type="text" class="gl-search" id="gl-search-input" placeholder="Buscar termo, sigla ou conceito...">';
+  html += '<div id="gl-list">';
+  Object.keys(grupos).forEach(function(grupo){
+    html += '<div class="gl-group-title">'+grupo+'</div>';
+    grupos[grupo].forEach(function(g){
+      html += '<div class="gl-item" data-search="'+(g.termo+' '+(g.sigla||'')+' '+g.def).toLowerCase().replace(/"/g,'')+'">'+
+        '<div class="gl-term">'+g.termo+(g.sigla?' <span class="gl-sigla">— '+g.sigla+'</span>':'')+'</div>'+
+        '<div class="gl-def">'+g.def+'</div></div>';
+    });
+  });
+  html += '</div>';
+  document.getElementById('glossario-content').innerHTML = html;
+  document.getElementById('gl-search-input').addEventListener('input', function(ev){
+    var q = ev.target.value.toLowerCase();
+    document.querySelectorAll('#gl-list .gl-item').forEach(function(it){
+      it.classList.toggle('gl-hidden', q.length>0 && it.getAttribute('data-search').indexOf(q)===-1);
+    });
+  });
+}
+
 /* ── Dígrafo ──────────────────────────────────────────────────────── */
 var _simulation = null;
 function renderGraph(){
@@ -225,15 +449,18 @@ function renderGraph(){
   var w = el.clientWidth, h = el.clientHeight;
   svg.attr('viewBox', [0,0,w,h]);
 
-  var nodes = RAW.nodes.map(function(n){ return Object.assign({}, n); });
+  var nodes = _filteredNodesForDisplay();
   var nodeIds = {}; nodes.forEach(function(n){ nodeIds[n.id]=true; });
-  var edges = RAW.edges.filter(function(e){ return nodeIds[e.source] && nodeIds[e.target]; })
+  var nodeById = {}; nodes.forEach(function(n){ nodeById[n.id]=n; });
+  var edges = _filteredEdgesForDisplay(nodeIds)
     .filter(function(e){
       return (S.edgeMin==null || e.n_usuarios >= S.edgeMin) &&
              (S.edgeMax==null || e.n_usuarios <= S.edgeMax) &&
-             (!e.iped_faixa || S.ipedFaixas[e.iped_faixa]);
-    })
-    .map(function(e){ return Object.assign({}, e); });
+             (!e.iped_faixa || S.ipedFaixas[e.iped_faixa]) &&
+             (S.personaFilter==='all' ||
+               (nodeById[e.source] && nodeById[e.source].persona_dominante===S.personaFilter) ||
+               (nodeById[e.target] && nodeById[e.target].persona_dominante===S.personaFilter));
+    });
 
   var countEl = document.getElementById('edge-filter-count');
   if(countEl) countEl.textContent = fmtN(edges.length)+' de '+fmtN(RAW.edges.length)+' trajetos exibidos';
@@ -243,18 +470,45 @@ function renderGraph(){
   var rScale = d3.scaleSqrt().domain([0,maxNodeVol]).range([4,26]);
   var wScale = d3.scaleLinear().domain([0,maxEdgeVol]).range([0.6,6]);
 
+  // total de pessoas em arestas ligadas a cada nó (exibidas) — usado no
+  // tooltip de aresta (% sobre o total do nó de origem) e no path builder
+  var totalPorNo = {};
+  edges.forEach(function(e){
+    totalPorNo[e.source] = (totalPorNo[e.source]||0) + e.n_usuarios;
+    totalPorNo[e.target] = (totalPorNo[e.target]||0) + e.n_usuarios;
+  });
+  var edgesByPair = {};
+  edges.forEach(function(e){ edgesByPair[e.source+'|'+e.target]=e; edgesByPair[e.target+'|'+e.source]=e; });
+  var degree = {};
+  edges.forEach(function(e){ degree[e.source]=(degree[e.source]||0)+1; degree[e.target]=(degree[e.target]||0)+1; });
+
   var g = svg.append('g');
   svg.call(d3.zoom().scaleExtent([0.3,4]).on('zoom', function(ev){ g.attr('transform', ev.transform); }));
 
   var link = g.append('g').selectAll('line').data(edges).enter().append('line')
     .attr('stroke', function(e){ return e.iped_cor ? '#'+e.iped_cor : '#2A4A6F'; })
     .attr('stroke-opacity', 0.75)
-    .attr('stroke-width', function(e){ return wScale(e.n_usuarios); });
-  link.append('title').text(function(e){
-    return (e.area_origem||e.source)+' → '+(e.area_destino||e.target)+
-      '\n'+fmtN(e.n_usuarios)+' pessoas · '+fmtN(e.n_viagens)+' viagens'+
-      (e.iped!=null ? '\nIPED: '+e.iped+' ('+e.iped_faixa+')' : '');
-  });
+    .attr('stroke-width', function(e){ return wScale(e.n_usuarios); })
+    .style('cursor', 'crosshair')
+    .on('mouseover', function(ev,e){
+      var tt = document.getElementById('edge-tooltip');
+      // depois que a simulação inicia, d3.forceLink substitui e.source/e.target
+      // (strings) por referências ao objeto do nó — normaliza para o id aqui
+      var srcId = (e.source && typeof e.source==='object') ? e.source.id : e.source;
+      var tgtId = (e.target && typeof e.target==='object') ? e.target.id : e.target;
+      var pct = totalPorNo[srcId] ? (100*e.n_usuarios/totalPorNo[srcId]) : 0;
+      tt.innerHTML = '<b>&#10010; '+(e.area_origem||srcId)+' &#8594; '+(e.area_destino||tgtId)+'</b><br>'+
+        fmtN(e.n_usuarios)+' pessoas · '+fmtN(e.n_viagens)+' viagens<br>'+
+        pct.toFixed(1)+'% do total de pessoas em trajetos ligados a '+(e.area_origem||srcId)+
+        (e.iped!=null ? '<br>IPED: '+e.iped+' ('+e.iped_faixa+')' : '');
+      tt.style.display='block';
+      tt.style.left = (ev.offsetX+14)+'px'; tt.style.top=(ev.offsetY+10)+'px';
+    })
+    .on('mousemove', function(ev){
+      var tt = document.getElementById('edge-tooltip');
+      tt.style.left = (ev.offsetX+14)+'px'; tt.style.top=(ev.offsetY+10)+'px';
+    })
+    .on('mouseout', function(){ document.getElementById('edge-tooltip').style.display='none'; });
 
   var node = g.append('g').selectAll('circle').data(nodes).enter().append('circle')
     .attr('r', function(n){ return rScale(n.n_usuarios); })
@@ -281,6 +535,7 @@ function renderGraph(){
             .attr('x2', function(e){return e.target.x;}).attr('y2', function(e){return e.target.y;});
       })
       .on('end', function(){ /* nó permanece fixo onde foi solto */ }))
+    .on('click', function(ev,d){ _pbNodeClicked('graph', d.id); })
     .on('mouseover', function(ev,d){
       var tt = document.getElementById('tooltip');
       var mix = Object.keys(d.mix).map(function(k){return k+':'+d.mix[k];}).join(' · ');
@@ -306,12 +561,112 @@ function renderGraph(){
     .force('charge', d3.forceManyBody().strength(-140))
     .force('center', d3.forceCenter(w/2, h/2))
     .force('collide', d3.forceCollide().radius(function(n){return rScale(n.n_usuarios)+4;}))
+    // nós soltos (grau 0 nas arestas exibidas) recebem uma atração suave extra
+    // para o centro, para não derivarem para longe do grafo principal
+    .force('anchorX', d3.forceX(w/2).strength(function(n){ return degree[n.id] ? 0 : 0.10; }))
+    .force('anchorY', d3.forceY(h/2).strength(function(n){ return degree[n.id] ? 0 : 0.10; }))
     .on('tick', function(){
       link.attr('x1',function(e){return e.source.x;}).attr('y1',function(e){return e.source.y;})
           .attr('x2',function(e){return e.target.x;}).attr('y2',function(e){return e.target.y;});
       node.attr('cx',function(n){return n.x;}).attr('cy',function(n){return n.y;});
       label.attr('x',function(n){return n.x;}).attr('y',function(n){return n.y;});
     });
+
+  S._pbCtx = S._pbCtx || {};
+  S._pbCtx.graph = {
+    edgesByPair: edgesByPair,
+    totalSaida: totalPorNo,
+    totalSubscribers: d3.sum(nodes, function(n){ return n.n_usuarios; }),
+    nodeLabel: function(id){ var n = nodeById[id]; return n ? (n.area_nome||id) : id; }
+  };
+  _pbRender('graph');
+
+  _renderSigmaChart('sigma-chart-graph');
+}
+
+/* ── Sigma Topológico diário — σ(G) = Σ (deg(u)−deg(v))² sobre as
+   arestas, usando grau PONDERADO pelo tráfego diário de cada aresta
+   (grau simples não mudaria dia a dia, pois a topologia é fixa — só o
+   peso das arestas varia por dia). Calculado sobre RAW.edges/nodes
+   completos, independente dos filtros de tela, como um indicador de
+   tendência estável. ─────────────────────────────────────────────── */
+var _sigmaSeriesCache = null;
+function _sigmaSeriesDaily(){
+  if(_sigmaSeriesCache) return _sigmaSeriesCache;
+  var dias = (RAW.personas_daily && RAW.personas_daily.dias) || [];
+  var values = dias.map(function(_,d){
+    var degW = {};
+    RAW.edges.forEach(function(e){
+      var v = e.daily ? e.daily.n_usuarios[d] : e.n_usuarios;
+      degW[e.source] = (degW[e.source]||0) + v;
+      degW[e.target] = (degW[e.target]||0) + v;
+    });
+    var sigma = 0;
+    RAW.edges.forEach(function(e){
+      var diff = (degW[e.source]||0) - (degW[e.target]||0);
+      sigma += diff*diff;
+    });
+    return sigma;
+  });
+  _sigmaSeriesCache = {dias:dias, values:values};
+  return _sigmaSeriesCache;
+}
+function _renderSigmaChart(elId){
+  var el = document.getElementById(elId);
+  if(!el || !RAW.personas_daily) return;
+  var s = _sigmaSeriesDaily();
+  el.innerHTML = _multiLineChartSvg(s.dias, {'σ(G)': s.values}, {'σ(G)':'#E87000'},
+    {h:90, padL:34, fmtV: function(v){ return v>=1e6 ? (v/1e6).toFixed(1)+'M' : v>=1e3 ? (v/1e3).toFixed(0)+'k' : v.toFixed(0); }});
+}
+
+/* ── Path builder — clique em nós contíguos monta um caminho; mostra
+   pessoas/% por aresta e uma estimativa de pessoas distintas no
+   percurso todo (aproximação: mínimo entre os pesos das arestas do
+   caminho, análogo ao gargalo de um fluxo — não há rastro individual
+   de assinante por trajeto nos dados agregados). Compartilhado entre
+   Dígrafo e Jornada RG (screenKey 'graph' / 'rgjourney'). ──────────── */
+Object.assign(S, { path: {graph:[], rgjourney:[]} });
+function _pbEdgeLookup(edgesByPair, a, b){ return edgesByPair[a+'|'+b] || edgesByPair[b+'|'+a] || null; }
+function _pbNodeClicked(screenKey, nodeId){
+  var ctx = S._pbCtx && S._pbCtx[screenKey];
+  if(!ctx) return;
+  var path = S.path[screenKey];
+  if(path.length && path[path.length-1]===nodeId) return;
+  if(path.length===0 || _pbEdgeLookup(ctx.edgesByPair, path[path.length-1], nodeId)){
+    path.push(nodeId);
+  } else {
+    S.path[screenKey] = [nodeId];
+  }
+  _pbRender(screenKey);
+}
+function _pbClear(screenKey){ S.path[screenKey] = []; _pbRender(screenKey); }
+function _pbRender(screenKey){
+  var contentId = screenKey==='graph' ? 'path-builder-content-graph' : 'path-builder-content-rgjourney';
+  var el = document.getElementById(contentId);
+  if(!el) return;
+  var path = S.path[screenKey] || [];
+  var ctx = S._pbCtx && S._pbCtx[screenKey];
+  if(!path.length || !ctx){
+    el.innerHTML = '<div class="pb-hint">Clique em nós contíguos (ligados por uma aresta) para montar um caminho.</div>';
+    return;
+  }
+  var html = '<div class="pb-step"><b>1. '+ctx.nodeLabel(path[0])+'</b></div>';
+  var edgeVals = [];
+  for(var i=1;i<path.length;i++){
+    var e = _pbEdgeLookup(ctx.edgesByPair, path[i-1], path[i]);
+    if(!e){ html += '<div class="pb-step" style="color:#FF6B5B;">(sem aresta direta)</div>'; continue; }
+    edgeVals.push(e.n_usuarios);
+    var tot = ctx.totalSaida[path[i-1]] || e.n_usuarios;
+    var pct = 100*e.n_usuarios/tot;
+    html += '<div class="pb-step" style="color:#8ABEDF;">&#8627; '+fmtN(e.n_usuarios)+' pessoas · '+pct.toFixed(1)+'%</div>';
+    html += '<div class="pb-step"><b>'+(i+1)+'. '+ctx.nodeLabel(path[i])+'</b></div>';
+  }
+  if(edgeVals.length){
+    var distinctApprox = Math.min.apply(null, edgeVals);
+    var pctDistinct = 100*distinctApprox/(ctx.totalSubscribers||1);
+    html += '<div class="pb-total">Pessoas distintas no percurso (aproximado — limite pelo gargalo do caminho): <b>'+fmtN(distinctApprox)+'</b> ('+pctDistinct.toFixed(1)+'%)</div>';
+  }
+  el.innerHTML = html;
 }
 
 /* ── Mapa (Leaflet, coordenadas reais das antenas/clusters) ──────── */
@@ -372,15 +727,31 @@ function renderMap(){
   }
   if(vTog.checked) _voronoiRender(vSel.value);
 
-  var nodeById = {};
-  RAW.nodes.forEach(function(n){ nodeById[n.id] = n; });
+  var nodesF = _filteredNodesForDisplay()
+    .filter(function(n){ return S.personaFilter==='all' || n.persona_dominante===S.personaFilter; })
+    .filter(function(n){ return (S.nodeMin==null || n.n_usuarios>=S.nodeMin) && (S.nodeMax==null || n.n_usuarios<=S.nodeMax); });
+  var nodeIds = {}; nodesF.forEach(function(n){ nodeIds[n.id]=true; });
+  var nodeById = {}; nodesF.forEach(function(n){ nodeById[n.id] = n; });
+  var totalExibido = d3.sum(nodesF, function(n){ return n.n_usuarios; }) || 1;
+
+  var edgesF = _filteredEdgesForDisplay(nodeIds)
+    .filter(function(e){
+      return (S.edgeMin==null || e.n_usuarios>=S.edgeMin) && (S.edgeMax==null || e.n_usuarios<=S.edgeMax) &&
+        (!e.iped_faixa || S.ipedFaixas[e.iped_faixa]) &&
+        (S.personaFilter==='all' ||
+          (nodeById[e.source] && nodeById[e.source].persona_dominante===S.personaFilter) ||
+          (nodeById[e.target] && nodeById[e.target].persona_dominante===S.personaFilter));
+    });
+  // total que parte de cada node de origem (dentre as arestas exibidas), para % de partida por aresta
+  var totalSaidaPorNode = {};
+  edgesF.forEach(function(e){ totalSaidaPorNode[e.source] = (totalSaidaPorNode[e.source]||0) + e.n_usuarios; });
 
   // Trajetos (arestas) — mesma origem de dado do Dígrafo (RAW.edges),
   // mas desenhados nas coordenadas geográficas reais em vez do layout de
   // forças. Espessura proporcional ao nº de assinantes que se deslocaram.
-  var maxEdgeVol = d3.max(RAW.edges, function(e){return e.n_usuarios;}) || 1;
+  var maxEdgeVol = d3.max(edgesF, function(e){return e.n_usuarios;}) || 1;
   var edgeWeight = d3.scaleLinear().domain([0, maxEdgeVol]).range([1, 9]);
-  RAW.edges.forEach(function(e){
+  edgesF.forEach(function(e){
     var a = nodeById[e.source], b = nodeById[e.target];
     if(!a || !b || a.lat==null || b.lat==null) return;
     var cor = e.iped_cor ? '#'+e.iped_cor : '#E87000';
@@ -389,9 +760,10 @@ function renderMap(){
       weight: edgeWeight(e.n_usuarios),
       opacity: 0.65
     });
+    var pctPartida = totalSaidaPorNode[e.source] ? (100*e.n_usuarios/totalSaidaPorNode[e.source]) : 0;
     line.bindPopup(
       '<div class="map-popup-title">'+(e.area_origem||a.id)+' &#8594; '+(e.area_destino||b.id)+'</div>'+
-      '<div class="map-popup-row">'+fmtN(e.n_usuarios)+' assinantes deslocados · '+fmtN(e.n_viagens)+' viagens</div>'+
+      '<div class="map-popup-row">'+fmtN(e.n_usuarios)+' assinantes deslocados ('+pctPartida.toFixed(1)+'% do que parte de '+(e.area_origem||a.id)+') · '+fmtN(e.n_viagens)+' viagens</div>'+
       '<div class="map-popup-row">Distância média: '+e.dist_km+' km · período predominante: '+e.periodo_predominante+'</div>'+
       '<div class="map-popup-row">RAT dominante: '+e.rat_dominante+'</div>'+
       (e.iped!=null ? '<div class="map-popup-row"><b>IPED: '+e.iped+' — '+e.iped_faixa+'</b> (qualidade no deslocamento)</div>' : ''),
@@ -402,10 +774,10 @@ function renderMap(){
     line.addTo(_leafletMap._edgeLayer);
   });
 
-  var maxVol = d3.max(RAW.nodes, function(n){return n.n_usuarios;}) || 1;
+  var maxVol = d3.max(nodesF, function(n){return n.n_usuarios;}) || 1;
   var rScale = d3.scaleSqrt().domain([0,maxVol]).range([5,32]);
 
-  RAW.nodes.forEach(function(n){
+  nodesF.forEach(function(n){
     if(n.lat==null || n.lon==null) return;
     var p = PERSONA_MAP[n.persona_dominante];
     var color = p ? '#'+p.cor_hex : '#567898';
@@ -414,10 +786,11 @@ function renderMap(){
       color: '#050C16', weight: 1.5,
       fillColor: color, fillOpacity: 0.75
     });
-    var mix = Object.keys(n.mix).map(function(k){return k+': '+fmtN(n.mix[k]);}).join('<br>');
+    var mix = Object.keys(n.mix).map(function(k){ var pk=PERSONA_MAP[k]; return (pk?pk.id+' '+pk.nome:k)+': '+fmtN(n.mix[k]); }).join('<br>');
+    var pctConcentrado = 100*n.n_usuarios/totalExibido;
     marker.bindPopup(
       '<div class="map-popup-title">'+n.id+' · '+(n.area_nome||'Região não identificada')+'</div>'+
-      '<div class="map-popup-row">'+fmtN(n.n_usuarios)+' assinantes · dominante: '+n.persona_dominante+'</div>'+
+      '<div class="map-popup-row">'+fmtN(n.n_usuarios)+' assinantes ('+pctConcentrado.toFixed(1)+'% do total exibido) · dominante: '+(p?p.id+' '+p.nome:n.persona_dominante)+'</div>'+
       '<div class="map-popup-row">'+mix+'</div>'+
       '<div class="map-popup-row">Drop médio: '+fmtPct(n.drop_medio)+' · Download: '+fmtN(Math.round(n.download_gb))+' GB</div>'+
       (n.vamping_score!=null ? '<div class="map-popup-row">Vamping: '+n.vamping_score+'/100 ('+n.vamping_pct_flag+'% com uso frequente na madrugada)</div>' : ''),
@@ -718,7 +1091,10 @@ function renderRGJourney(){
   var data = (S.personaFilter!=='all' && jr.by_persona[S.personaFilter]) ? jr.by_persona[S.personaFilter] : {nodes: jr.nodes, edges: jr.edges};
 
   var wrap = document.getElementById('rgjourney-content');
-  wrap.innerHTML = '<div id="rgj-svg-wrap"><svg id="rgj-svg" viewBox="0 0 560 480"></svg></div><div class="rgj-side" id="rgj-side"></div>';
+  wrap.innerHTML = '<div id="rgj-svg-wrap" style="position:relative;"><svg id="rgj-svg" viewBox="0 0 560 480"></svg>'+
+    '<div class="sigma-chart-panel"><div class="sigma-chart-title">&#963; Topológico (evolução diária)</div><div id="sigma-chart-rgj"></div></div>'+
+    '<div class="pb-box"><div class="pb-title">Construtor de caminho</div><div id="path-builder-content-rgjourney"></div><button class="pb-clear-btn" onclick="_pbClear(\'rgjourney\')">Limpar caminho</button></div>'+
+    '</div><div class="rgj-side" id="rgj-side"></div>';
 
   var svg = d3.select('#rgj-svg');
   var g = svg.append('g').attr('class', 'rgj-zoom-group');
@@ -762,7 +1138,8 @@ function renderRGJourney(){
       .attr('stroke', RG_COLOR[e.source]).attr('stroke-width', wEdge(e.n))
       .attr('stroke-opacity', baseOpacity).property('_baseOpacity', baseOpacity)
       .attr('marker-end','url(#rgj-arrow)')
-      .style('cursor','pointer');
+      .style('cursor','pointer')
+      .on('click', function(){ _rgjShowEdgeInfo(e, data.edges); });
     path.append('title').text(RG_LABEL[e.source]+' → '+RG_LABEL[e.target]+': '+fmtN(e.n)+' transições observadas');
   });
 
@@ -774,6 +1151,10 @@ function renderRGJourney(){
     .attr('fill', function(n){return RG_COLOR[n.id];})
     .attr('stroke','#050C16').attr('stroke-width',2)
     .style('cursor','grab')
+    .on('click', function(ev, n){
+      _rgjShowNodeInfo(n, data.nodes);
+      _pbNodeClicked('rgjourney', n.id);
+    })
     .on('mouseover', function(ev, n){
       svg.selectAll('circle.rgj-node').attr('opacity', function(m){ return (m.id===n.id) ? 1 : 0.25; });
       svg.selectAll('path.rgj-edge').each(function(){
@@ -823,7 +1204,9 @@ function renderRGJourney(){
     .on('end', function(){ d3.select(this).style('cursor','grab'); }));
 
   // Painel lateral: legenda + ranking + nota metodológica
-  var side = '<div class="rgj-card"><div class="ins-title" style="margin-bottom:8px">&#128257; Categorias (RG)</div>';
+  var side = '<div class="rgj-card"><div class="ins-title" style="margin-bottom:8px">Nó selecionado</div><div id="rgj-node-info"><div class="pb-hint">Clique em um nó para ver detalhes.</div></div></div>';
+  side += '<div class="rgj-card"><div class="ins-title" style="margin-bottom:8px">Aresta selecionada</div><div id="rgj-edge-info"><div class="pb-hint">Clique em uma aresta para ver detalhes.</div></div></div>';
+  side += '<div class="rgj-card"><div class="ins-title" style="margin-bottom:8px">&#128257; Categorias (RG)</div>';
   RG_ORDER.forEach(function(rg){
     side += '<div class="rgj-legend-item"><span class="rgj-legend-dot" style="background:'+RG_COLOR[rg]+'"></span>'+RG_LABEL[rg]+'</div>';
   });
@@ -840,6 +1223,74 @@ function renderRGJourney(){
   side += '</div>';
 
   document.getElementById('rgj-side').innerHTML = side;
+
+  var edgesByPair = {};
+  data.edges.forEach(function(e){ edgesByPair[e.source+'|'+e.target]=e; edgesByPair[e.target+'|'+e.source]=e; });
+  var totalPorNo = {};
+  data.edges.forEach(function(e){ totalPorNo[e.source]=(totalPorNo[e.source]||0)+e.n; totalPorNo[e.target]=(totalPorNo[e.target]||0)+e.n; });
+  S._pbCtx = S._pbCtx || {};
+  S._pbCtx.rgjourney = {
+    edgesByPair: edgesByPair,
+    totalSaida: totalPorNo,
+    totalSubscribers: d3.sum(data.nodes, function(n){ return n.n; }),
+    nodeLabel: function(id){ return RG_LABEL[id] || id; }
+  };
+  _pbRender('rgjourney');
+  _renderSigmaChartRG('sigma-chart-rgj', data.edges);
+}
+
+function _rgjShowNodeInfo(n, allNodes){
+  var el = document.getElementById('rgj-node-info');
+  if(!el) return;
+  var totalOutros = d3.sum(allNodes, function(m){ return m.n; }) - n.n;
+  var pct = totalOutros>0 ? (100*n.n/totalOutros) : 0;
+  el.innerHTML = '<div class="pb-step"><b>'+RG_LABEL[n.id]+'</b></div>'+
+    '<div class="pb-step">'+fmtN(n.n)+' sessões observadas</div>'+
+    '<div class="pb-step">'+pct.toFixed(1)+'% sobre a soma de todos os demais nós</div>';
+}
+function _rgjShowEdgeInfo(e, allEdges){
+  var el = document.getElementById('rgj-edge-info');
+  if(!el) return;
+  var totalDoNo = d3.sum(allEdges.filter(function(x){return x.source===e.source;}), function(x){ return x.n; }) || 1;
+  var pct = 100*e.n/totalDoNo;
+  el.innerHTML = '<div class="pb-step"><b>'+RG_LABEL[e.source]+' &#8594; '+RG_LABEL[e.target]+'</b></div>'+
+    '<div class="pb-step">'+fmtN(e.n)+' transições observadas</div>'+
+    '<div class="pb-step">'+pct.toFixed(1)+'% entre todas as transições a partir de '+RG_LABEL[e.source]+'</div>';
+}
+
+/* Sigma topológico para Jornada RG — não há série diária real para este
+   grafo (categorias de serviço, não rede física), então a variação
+   dia-a-dia é sintética (jitter determinístico, seed por par de nós),
+   deixado explícito na legenda do gráfico. */
+function _mulberry32(seed){
+  return function(){
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    var t = Math.imul(seed ^ seed>>>15, 1 | seed);
+    t = (t + Math.imul(t ^ t>>>7, 61 | t)) ^ t;
+    return ((t ^ t>>>14) >>> 0) / 4294967296;
+  };
+}
+function _strSeed(s){ var h=0; for(var i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; } return h; }
+function _renderSigmaChartRG(elId, edges){
+  var el = document.getElementById(elId);
+  if(!el || !RAW.personas_daily) return;
+  var dias = RAW.personas_daily.dias;
+  var values = dias.map(function(_,d){
+    var degW = {};
+    edges.forEach(function(e){
+      var rnd = _mulberry32(_strSeed('rgjsigma|'+e.source+'|'+e.target) + d);
+      var wk = 1 + 0.12*Math.sin(2*Math.PI*d/7);
+      var v = e.n * wk * (1 + (rnd()-0.5)*0.18);
+      degW[e.source] = (degW[e.source]||0) + v;
+      degW[e.target] = (degW[e.target]||0) + v;
+    });
+    var sigma = 0;
+    edges.forEach(function(e){ var diff=(degW[e.source]||0)-(degW[e.target]||0); sigma += diff*diff; });
+    return sigma;
+  });
+  el.innerHTML = _multiLineChartSvg(dias, {'σ(G)':values}, {'σ(G)':'#5AC8FA'},
+    {h:80, padL:34, fmtV: function(v){ return v>=1e6 ? (v/1e6).toFixed(1)+'M' : v>=1e3 ? (v/1e3).toFixed(0)+'k' : v.toFixed(0); }}) +
+    '<div style="font-size:9px;color:#3A6080;margin-top:2px;">Variação diária sintética — Jornada RG não tem série diária real na base.</div>';
 }
 
 /* ── Rede — topologia sintética Core→PGW/UPF→SGW→Sites, visão de
@@ -1000,6 +1451,11 @@ function _redeCapacidadeOutliersHtml(tipo, id){
 
   var html = '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #16283F">';
   html += '<div class="ins-title" style="margin-bottom:6px">Capacidade &amp; Outliers <span style="font-size:9px;color:#3A6080">(15 dias)</span></div>';
+
+  if(S.dia!=='all' && S.dia>=0 && S.dia<serie.dias.length){
+    html += '<div style="font-size:11px;color:#E87000;margin-bottom:8px;">Dia selecionado — '+serie.dias[S.dia]+': '+
+      serie.trafego_gb[S.dia].toFixed(1)+' GB/dia · drop '+fmtPct(serie.drop_pct[S.dia])+' · congestionamento '+fmtPct(serie.cong[S.dia])+'</div>';
+  }
 
   var cap = capacityProjection(serie.trafego_gb, 90);
   html += '<div style="font-size:10px;color:#567898;margin-bottom:2px">Projeção de capacidade (regressão linear, ref. = pico observado)</div>';
@@ -1233,12 +1689,17 @@ function _outChartSvg(dias, vals, mad, bayes, cor, isPct){
   svg += '<path d="'+bandPath+'" fill="#8ABEDF" opacity="0.12" stroke="none"/>';
   svg += '<path d="'+predPath+'" fill="none" stroke="#8ABEDF" stroke-width="1.2" stroke-dasharray="3 2" opacity="0.7"/>';
   svg += '<path d="'+linePath+'" fill="none" stroke="'+cor+'" stroke-width="2"/>';
+  if(S.dia!=='all' && S.dia>=0 && S.dia<n){
+    svg += '<line x1="'+x(S.dia)+'" y1="'+padT+'" x2="'+x(S.dia)+'" y2="'+(H-padB)+'" stroke="#E87000" stroke-width="1.4" stroke-dasharray="3 2" opacity="0.85"/>';
+    svg += '<text x="'+x(S.dia)+'" y="'+(padT+9)+'" font-size="8" fill="#E87000" text-anchor="middle">'+dias[S.dia]+'</text>';
+  }
   vals.forEach(function(v,i){
     var madOut = mad.isOutlier[i];
     var bClasse = bayes[i].classe;
-    var r = madOut ? 4.5 : (bClasse!=='normal' ? 4 : 2.5);
+    var selecionado = S.dia===i;
+    var r = (madOut ? 4.5 : (bClasse!=='normal' ? 4 : 2.5)) + (selecionado ? 2 : 0);
     svg += '<circle cx="'+x(i)+'" cy="'+y(v)+'" r="'+r+'" fill="'+(madOut?'#FF4444':cor)+'" '+
-      (bClasse==='forte' ? 'stroke="#FF4444" stroke-width="2"' : bClasse==='fraca' ? 'stroke="#F0C000" stroke-width="2"' : 'stroke="#050C16" stroke-width="1"')+'>'+
+      (selecionado ? 'stroke="#E87000" stroke-width="2.5"' : bClasse==='forte' ? 'stroke="#FF4444" stroke-width="2"' : bClasse==='fraca' ? 'stroke="#F0C000" stroke-width="2"' : 'stroke="#050C16" stroke-width="1"')+'>'+
       '<title>'+dias[i]+': '+fmt(v)+(madOut?' · outlier MAD':'')+(bClasse!=='normal'?' · Bayes '+bClasse+' (z='+bayes[i].z.toFixed(2)+')':'')+'</title></circle>';
   });
   svg += '</svg>';
@@ -1304,6 +1765,7 @@ function _detRenderMain(){
     var alarmes = janelas.filter(function(w){return w.alarme;});
     html += '<div class="det-card"><div class="det-card-title">Limiar estatístico — janela de '+tam+' CDR ('+janelas.length+' janela(s), '+alarmes.length+' alarme(s))</div>';
     html += _detChartSvg(janelas, dc.nqa);
+    html += _detChartResumo(janelas);
     if(alarmes.length){
       alarmes.slice(0, 15).forEach(function(w){
         html += '<div class="det-alarm-row"><span class="det-alarm-badge">ALARME</span>'+
@@ -1336,6 +1798,7 @@ function _detRenderMain(){
     var alarmes = janelas.filter(function(w){return w.alarme_bloqueio;});
     html += '<div class="det-card"><div class="det-card-title">Bloqueio de voz — janela de '+fmtN(par[1])+' chamadas ('+janelas.length+' janela(s), '+alarmes.length+' alarme(s))</div>';
     html += _detChartSvg(janelas, dc.nqa_voz, 'p_hat_bloqueio', 'alarme_bloqueio', 'p_valor_bloqueio');
+    html += _detChartResumo(janelas, 'p_hat_bloqueio', 'alarme_bloqueio');
     if(alarmes.length){
       alarmes.slice(0, 15).forEach(function(w){
         html += '<div class="det-alarm-row"><span class="det-alarm-badge">ALARME</span>'+
@@ -1379,25 +1842,86 @@ function _detRenderMain(){
 }
 function _detChartSvg(janelas, nqa, campoValor, campoAlarme, campoPvalor){
   campoValor = campoValor || 'p_hat'; campoAlarme = campoAlarme || 'alarme'; campoPvalor = campoPvalor || 'p_valor';
-  var W=680, H=140, padL=40, padR=8, padT=10, padB=18;
+  var W=680, H=190, padL=46, padR=10, padT=16, padB=22;
   var n = janelas.length;
   if(!n) return '<div style="font-size:11px;color:#3A6080">Sem janelas suficientes.</div>';
+  var vals = janelas.map(function(w){return w[campoValor];});
+  var hi = Math.max(nqa*2, Math.max.apply(null, vals) * 1.15);
   var x = function(i){ return padL + (W-padL-padR) * (n<=1?0:i/(n-1)); };
-  var hi = Math.max(nqa*2, Math.max.apply(null, janelas.map(function(w){return w[campoValor];})) * 1.15);
   var y = function(v){ return H-padB - (H-padT-padB) * (v/hi); };
+
   var svg = '<svg class="det-chart-svg" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">';
-  svg += '<text x="2" y="'+(y(hi)+4)+'" font-size="9" fill="#3A6080">'+fmtPct(hi)+'</text>';
-  svg += '<line x1="'+padL+'" y1="'+y(nqa)+'" x2="'+(W-padR)+'" y2="'+y(nqa)+'" stroke="#E8B000" stroke-width="1" stroke-dasharray="4 3"/>';
-  svg += '<text x="2" y="'+(y(nqa)+3)+'" font-size="9" fill="#E8B000">NQA</text>';
-  janelas.forEach(function(w,i){
-    var alarme = w[campoAlarme];
-    var val = w[campoValor];
-    var r = alarme ? 4 : 2;
-    svg += '<circle cx="'+x(i)+'" cy="'+y(val)+'" r="'+r+'" fill="'+(alarme?'#FF4444':'#1E90FF')+'" opacity="'+(alarme?1:0.55)+'">'+
-      '<title>'+w.dia_inicio+' a '+w.dia_fim+': p̂='+fmtPct(val)+(alarme?' · ALARME (p='+w[campoPvalor].toExponential(2)+')':'')+'</title></circle>';
+
+  // faixas de referência: acima do NQA (território de alarme) vs abaixo (baseline)
+  svg += '<rect x="'+padL+'" y="'+padT+'" width="'+(W-padL-padR)+'" height="'+Math.max(0,(y(nqa)-padT))+'" fill="#FF444412"/>';
+  svg += '<rect x="'+padL+'" y="'+y(nqa)+'" width="'+(W-padL-padR)+'" height="'+Math.max(0,(H-padB-y(nqa)))+'" fill="#1E90FF0A"/>';
+
+  // eixo: topo (hi) e base (0%)
+  svg += '<line x1="'+padL+'" y1="'+padT+'" x2="'+(W-padR)+'" y2="'+padT+'" stroke="#1A3050" stroke-width="1"/>';
+  svg += '<text x="2" y="'+(padT+4)+'" font-size="9" fill="#3A6080">'+fmtPct(hi)+'</text>';
+  svg += '<line x1="'+padL+'" y1="'+(H-padB)+'" x2="'+(W-padR)+'" y2="'+(H-padB)+'" stroke="#1A3050" stroke-width="1"/>';
+  svg += '<text x="2" y="'+(H-padB+3)+'" font-size="9" fill="#3A6080">0%</text>';
+
+  // faixas de destaque para corridas contíguas de janelas em alarme (evita blob de círculos sobrepostos)
+  var runs = [];
+  (function(){
+    var i=0;
+    while(i<n){
+      if(janelas[i][campoAlarme]){
+        var start=i;
+        while(i<n && janelas[i][campoAlarme]) i++;
+        runs.push([start, i-1]);
+      } else { i++; }
+    }
+  })();
+  runs.forEach(function(run){
+    var start=run[0], end=run[1];
+    var runVals = janelas.slice(start,end+1).map(function(w){return w[campoValor];});
+    var vMin=Math.min.apply(null,runVals), vMax=Math.max.apply(null,runVals);
+    var x0 = start===0 ? padL : (x(start-1)+x(start))/2;
+    var x1 = end===n-1 ? (W-padR) : (x(end)+x(end+1))/2;
+    svg += '<rect x="'+x0.toFixed(1)+'" y="'+padT+'" width="'+Math.max(1,(x1-x0)).toFixed(1)+'" height="'+(H-padT-padB)+'" fill="#FF444426" stroke="#FF444455" stroke-width="0.5">'+
+      '<title>'+(end-start+1)+' janela(s) em alarme · p̂ entre '+fmtPct(vMin)+' e '+fmtPct(vMax)+' · '+janelas[start].dia_inicio+' a '+janelas[end].dia_fim+'</title></rect>';
   });
+
+  // série — linha contínua (mostra a forma/tendência mesmo em alta densidade de janelas)
+  var pts = janelas.map(function(w,i){ return x(i).toFixed(1)+','+y(w[campoValor]).toFixed(1); }).join(' ');
+  svg += '<polyline points="'+pts+'" fill="none" stroke="#1E90FF" stroke-width="1.6" opacity="0.9"/>';
+
+  // linha de referência do NQA — desenhada por cima da série para nunca ficar coberta
+  svg += '<line x1="'+padL+'" y1="'+y(nqa)+'" x2="'+(W-padR)+'" y2="'+y(nqa)+'" stroke="#E8B000" stroke-width="1.3" stroke-dasharray="4 3"/>';
+  var nqaLabel = 'NQA '+fmtPct(nqa);
+  var nqaLabelW = nqaLabel.length*5.3+6;
+  svg += '<rect x="'+(W-padR-nqaLabelW).toFixed(1)+'" y="'+(y(nqa)-13).toFixed(1)+'" width="'+nqaLabelW.toFixed(1)+'" height="13" fill="#0C1829" opacity="0.92" rx="2"/>';
+  svg += '<text x="'+(W-padR-3)+'" y="'+(y(nqa)-4)+'" font-size="9" fill="#E8B000" text-anchor="end">'+nqaLabel+'</text>';
+
+  // marcadores — corridas curtas mostram cada janela; corridas densas mostram só o pico (rotulado)
+  runs.forEach(function(run){
+    var start=run[0], end=run[1];
+    if(end-start+1 <= 3){
+      for(var k=start;k<=end;k++){
+        var w=janelas[k];
+        svg += '<circle cx="'+x(k).toFixed(1)+'" cy="'+y(w[campoValor]).toFixed(1)+'" r="4" fill="#FF4444" stroke="#0C1829" stroke-width="1.5">'+
+          '<title>'+w.dia_inicio+' a '+w.dia_fim+': p̂='+fmtPct(w[campoValor])+' · ALARME (p='+w[campoPvalor].toExponential(2)+')</title></circle>';
+      }
+    } else {
+      var peakIdx=start, peakVal=janelas[start][campoValor];
+      for(var k=start;k<=end;k++){ if(janelas[k][campoValor]>peakVal){ peakVal=janelas[k][campoValor]; peakIdx=k; } }
+      svg += '<circle cx="'+x(peakIdx).toFixed(1)+'" cy="'+y(peakVal).toFixed(1)+'" r="4.5" fill="#FF4444" stroke="#0C1829" stroke-width="1.5">'+
+        '<title>'+(end-start+1)+' janelas em alarme nesta faixa · pico p̂='+fmtPct(peakVal)+' em '+janelas[peakIdx].dia_inicio+'</title></circle>';
+    }
+  });
+
   svg += '</svg>';
   return svg;
+}
+function _detChartResumo(janelas, campoValor, campoAlarme){
+  campoValor = campoValor || 'p_hat'; campoAlarme = campoAlarme || 'alarme';
+  var alarmes = janelas.filter(function(w){return w[campoAlarme];});
+  if(!alarmes.length) return '';
+  var vals = alarmes.map(function(w){return w[campoValor];});
+  var vMin=Math.min.apply(null,vals), vMax=Math.max.apply(null,vals);
+  return '<div class="det-chart-summary">'+alarmes.length+' janela(s) em alarme nesta série · p̂ entre <b>'+fmtPct(vMin)+'</b> e <b>'+fmtPct(vMax)+'</b></div>';
 }
 function _detGamaChartSvg(janelas){
   var W=680, H=140, padL=40, padR=8, padT=10, padB=18;
@@ -1420,13 +1944,47 @@ function _detGamaChartSvg(janelas){
 }
 
 /* ── Personas ─────────────────────────────────────────────────────── */
+var PERSONA_ICON = {
+  P1: '&#128188;', // Executivo Mobile
+  P2: '&#127909;', // Streamer
+  P3: '&#128645;', // Comutador Urbano Diário
+  P4: '&#128201;', // Churn Silencioso
+  P5: '&#128225;', // Big Data User
+  P6: '&#128222;', // Usuário de Voz Premium
+  P7: '&#129395;', // Multi-SIM / Itinerante (mala de viagem)
+  P8: '&#128172;', // Social/Comunicação Intenso
+  P9: '&#127918;'  // Gamer
+};
+function _personasPieSvg(){
+  var W=200, H=200, r=92;
+  var pie = d3.pie().value(function(p){return p.pct;}).sort(null);
+  var arc = d3.arc().innerRadius(46).outerRadius(r);
+  var arcs = pie(RAW.personas);
+  var svg = '<svg viewBox="0 0 '+W+' '+H+'" style="width:200px;height:200px;flex-shrink:0;"><g transform="translate('+(W/2)+','+(H/2)+')">';
+  arcs.forEach(function(a){
+    var p = a.data;
+    svg += '<path d="'+arc(a)+'" fill="#'+p.cor_hex+'" stroke="#050C16" stroke-width="1.5">'+
+      '<title>'+p.id+' '+p.nome+': '+p.pct+'%</title></path>';
+  });
+  svg += '</g></svg>';
+  return svg;
+}
 function renderPersonas(){
-  var html = '';
+  var html = '<div class="pc" style="grid-column:1/-1;display:flex;align-items:center;gap:20px;flex-wrap:wrap;">'+
+    _personasPieSvg()+
+    '<div style="display:flex;flex-wrap:wrap;gap:10px;flex:1;min-width:220px;">'+
+    RAW.personas.map(function(p){
+      return '<span style="font-size:11.5px;color:#D0E8FF;display:inline-flex;align-items:center;gap:5px;background:#0A1422;border:1px solid #1A3050;border-radius:14px;padding:4px 10px;">'+
+        '<span style="font-size:14px;">'+PERSONA_ICON[p.id]+'</span>'+
+        '<span style="width:8px;height:8px;border-radius:50%;background:#'+p.cor_hex+';display:inline-block;"></span>'+
+        p.id+' '+p.nome+' — <b>'+p.pct+'%</b></span>';
+    }).join('')+
+    '</div></div>';
   RAW.personas.forEach(function(p){
     var q = RAW.quality_by_persona.filter(function(x){return x.persona_id===p.id;})[0] || {};
     var vamp = RAW.vamping.by_persona.filter(function(x){return x.persona_id===p.id;})[0];
     html += '<div class="pc" style="border-left-color:#'+p.cor_hex+'">'+
-      '<div class="pc-head"><div class="pc-avatar" style="background:#'+p.cor_hex+'22;border:1px solid #'+p.cor_hex+'">&#128100;</div>'+
+      '<div class="pc-head"><div class="pc-avatar" style="background:#'+p.cor_hex+'22;border:1px solid #'+p.cor_hex+'">'+(PERSONA_ICON[p.id]||'&#128100;')+'</div>'+
       '<div><div class="pc-name">'+p.id+' · '+p.nome+'</div><div class="pc-n">'+fmtN(p.n)+' assinantes ('+p.pct+'%) · confiança média '+fmtPct(p.confianca_media)+'</div></div></div>'+
       '<div class="pc-desc">'+p.descricao+'</div>'+
       '<div class="pc-criteria"><b>Inclusão:</b> '+p.criterio_inclusao+'<br><b>Exclusão:</b> '+p.criterio_exclusao+'</div>'+
@@ -1440,11 +1998,42 @@ function renderPersonas(){
 }
 
 /* ── Qualidade ────────────────────────────────────────────────────── */
+var SEGMENTO_QUALITY_ADJUST = {
+  all: {drop:1, cong:1},
+  pos_pago: {drop:0.85, cong:0.85},   // aparelhos/planos premium — ilustrativo
+  controle: {drop:1.0, cong:1.0},
+  pre_pago: {drop:1.15, cong:1.15}    // ilustrativo
+};
+function _qualityAdjustedByPersona(){
+  var segAdj = SEGMENTO_QUALITY_ADJUST[S.segmento] || SEGMENTO_QUALITY_ADJUST.all;
+  var useClusterDia = (S.clusters!=null) || (S.dia!=='all');
+  var nodesF = useClusterDia ? _filteredNodesForDisplay() : null;
+  return RAW.quality_by_persona.map(function(q){
+    var out = Object.assign({}, q);
+    if(nodesF){
+      var sw=0, sDrop=0, sCong=0;
+      nodesF.forEach(function(n){
+        var w = (n.mix && n.mix[q.persona_id]) || 0;
+        if(w<=0) return;
+        sw += w; sDrop += w*n.drop_medio; sCong += w*n.cong_medio;
+      });
+      if(sw>0){ out.drop_medio = sDrop/sw; out.cong_medio = sCong/sw; }
+    }
+    out.drop_medio = out.drop_medio * segAdj.drop;
+    out.cong_medio = Math.min(1, out.cong_medio * segAdj.cong);
+    return out;
+  });
+}
 function renderQuality(){
   var html = '<div class="qual-grid">';
+  var qAdj = _qualityAdjustedByPersona();
+  var filtroAtivo = S.segmento!=='all' || S.clusters!=null || S.dia!=='all';
+  if(filtroAtivo){
+    html += '<div class="qual-sub" style="grid-column:1/-1;color:#E87000;">Drop/Congestionamento recalculados para o filtro atual (Segmento/Cluster/Dia). Completamento de voz/SMS não têm granularidade por cluster/dia na base — seguem o agregado da janela toda.</div>';
+  }
 
   html += '<div class="qual-card"><div class="qual-title">&#9670; Taxa de Drop por Persona</div><div class="qual-sub">Threshold de alerta de referência: 8%</div>';
-  RAW.quality_by_persona.forEach(function(q){
+  qAdj.forEach(function(q){
     var p = PERSONA_MAP[q.persona_id];
     var color = q.drop_medio>0.08 ? '#FF4444' : (q.drop_medio>0.06?'#E87000':'#2ECC71');
     html += '<div class="iqre-bar-row"><span class="iqre-seg-lbl">'+q.persona_id+' '+p.nome+'</span>'+
@@ -1454,11 +2043,21 @@ function renderQuality(){
   html += '</div>';
 
   html += '<div class="qual-card"><div class="qual-title">&#9670; Congestionamento por Persona</div><div class="qual-sub">Índice 0–1, média da janela</div>';
-  RAW.quality_by_persona.forEach(function(q){
+  qAdj.forEach(function(q){
     var p = PERSONA_MAP[q.persona_id];
     html += '<div class="iqre-bar-row"><span class="iqre-seg-lbl">'+q.persona_id+' '+p.nome+'</span>'+
       '<div class="iqre-bar-wrap"><div class="iqre-bar-fill" style="width:'+(q.cong_medio*100)+'%;background:#E87000"></div></div>'+
       '<span class="iqre-val">'+fmtPct(q.cong_medio)+'</span></div>';
+  });
+  html += '</div>';
+
+  html += '<div class="qual-card"><div class="qual-title">&#9737; IPED médio por Persona</div><div class="qual-sub">Média ponderada do IPED das arestas pelo mix de personas dos nós origem/destino</div>';
+  (RAW.iped_by_persona||[]).forEach(function(ip){
+    if(ip.iped_medio==null) return;
+    var faixa = RAW.iped_faixas.slice().reverse().find(function(f){ return ip.iped_medio>=f.valor_min; }) || RAW.iped_faixas[RAW.iped_faixas.length-1];
+    html += '<div class="iqre-bar-row"><span class="iqre-seg-lbl">'+ip.persona_id+' '+ip.persona_nome+'</span>'+
+      '<div class="iqre-bar-wrap"><div class="iqre-bar-fill" style="width:'+ip.iped_medio+'%;background:#'+faixa.cor_hex+'"></div></div>'+
+      '<span class="iqre-val" style="color:#'+faixa.cor_hex+'">'+ip.iped_medio+' ('+faixa.rotulo+')</span></div>';
   });
   html += '</div>';
 
@@ -1762,7 +2361,7 @@ function _redeAcaoRecomendada(causaId){
 }
 function _redeNarrativa(a){
   var anatelNota = (a.estado==='Critico'||a.estado==='Falha')
-    ? ' Esse padrão de degradação prolongada, se não resolvido dentro do prazo de reparo aplicável, pode se relacionar aos indicadores de qualidade do Serviço Móvel Pessoal (SMP) da Anatel (paráfrase para fins de demonstração, ver Assistente).'
+    ? ' Esse padrão de degradação prolongada, se não resolvido dentro do prazo de reparo aplicável, pode se relacionar aos indicadores de qualidade do Serviço Móvel Pessoal (SMP) da Anatel.'
     : '';
   return 'O elemento '+a.nodeId+' está classificado como '+a.estado+', com '+Math.round(a.bayes.top.prob*100)+
     '% de probabilidade posterior para a causa "'+a.bayes.top.label+'" (rede Bayesiana) e '+Math.round(a.pPiora*100)+
@@ -2049,6 +2648,9 @@ document.addEventListener('DOMContentLoaded', function(){
   });
   buildPersonaFilter();
   buildIpedFilter();
+  buildClusterFilter();
+  buildDiaPeriodoFilter();
+  _updatePeopleParamsSummary();
   renderOverview();
   window.addEventListener('resize', function(){ if(S.screen==='graph') renderGraph(); });
 
@@ -2056,15 +2658,26 @@ document.addEventListener('DOMContentLoaded', function(){
   var maxInp = document.getElementById('edge-max-input');
   minInp.addEventListener('input', function(){
     S.edgeMin = minInp.value===''? null : Math.max(0, parseInt(minInp.value,10));
-    if(S.screen==='graph') renderGraph();
+    _refreshCurrentScreen();
   });
   maxInp.addEventListener('input', function(){
     S.edgeMax = maxInp.value===''? null : Math.max(0, parseInt(maxInp.value,10));
-    if(S.screen==='graph') renderGraph();
+    _refreshCurrentScreen();
   });
   document.getElementById('edge-filter-clear-btn').addEventListener('click', function(){
     minInp.value=''; maxInp.value='';
     S.edgeMin=null; S.edgeMax=null;
-    if(S.screen==='graph') renderGraph();
+    _refreshCurrentScreen();
+  });
+
+  var nodeMinInp = document.getElementById('node-min-input');
+  var nodeMaxInp = document.getElementById('node-max-input');
+  nodeMinInp.addEventListener('input', function(){
+    S.nodeMin = nodeMinInp.value===''? null : Math.max(0, parseInt(nodeMinInp.value,10));
+    _refreshCurrentScreen();
+  });
+  nodeMaxInp.addEventListener('input', function(){
+    S.nodeMax = nodeMaxInp.value===''? null : Math.max(0, parseInt(nodeMaxInp.value,10));
+    _refreshCurrentScreen();
   });
 });

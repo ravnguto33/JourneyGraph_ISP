@@ -38,9 +38,11 @@ body{font-family:Arial,sans-serif;background:#09111E;color:#E0EAF5;height:100vh;
 .sva-num-input{background:#07101C;border:1px solid #2A4A6F;color:#D0E8FF;font-size:11px;padding:3px 5px;border-radius:4px;}
 .sva-num-input::placeholder{color:#3A6080;}
 #edge-filter-group{display:none;}
-body.screen-graph #edge-filter-group{display:flex !important;}
+body.screen-graph #edge-filter-group, body.screen-map #edge-filter-group{display:flex !important;}
 #iped-filter-group{display:none;}
-body.screen-graph #iped-filter-group{display:flex !important;}
+body.screen-graph #iped-filter-group, body.screen-map #iped-filter-group{display:flex !important;}
+#node-filter-group{display:none;}
+body.screen-map #node-filter-group{display:flex !important;}
 .iped-fbtn{opacity:1;}
 .iped-fbtn.off{opacity:0.35;}
 
@@ -63,6 +65,14 @@ body.screen-graph #iped-filter-group{display:flex !important;}
 #screen-graph{overflow:hidden;}
 #graph-svg{width:100%;height:100%;touch-action:none;}
 .tooltip{position:absolute;pointer-events:none;background:#0C1829;border:1px solid #1E3A5F;border-radius:6px;padding:7px 11px;font-size:13px;color:#E8F4FF;max-width:240px;display:none;z-index:10;}
+.sigma-chart-panel{position:absolute;left:10px;bottom:10px;width:340px;max-width:calc(100% - 20px);background:#0C1829ee;border:1px solid #1A3050;border-radius:8px;padding:8px 10px;z-index:8;}
+.sigma-chart-title{font-size:10px;color:#8ABEDF;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:2px;}
+.pb-box{position:absolute;right:10px;top:10px;width:260px;max-width:calc(100% - 20px);max-height:calc(100% - 20px);overflow-y:auto;background:#0C1829ee;border:1px solid #1A3050;border-radius:8px;padding:10px 12px;z-index:9;}
+.pb-title{font-size:11px;color:#8ABEDF;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:6px;}
+.pb-hint{font-size:11px;color:#567898;line-height:1.5;}
+.pb-step{font-size:11.5px;color:#D0E8FF;padding:3px 0;border-bottom:1px solid #0F1E30;}
+.pb-total{margin-top:8px;padding-top:8px;border-top:1px solid #1A3050;font-size:12px;color:#E0F0FF;}
+.pb-clear-btn{margin-top:8px;width:100%;background:transparent;border:1px solid #2A4A6F;color:#8ABEDF;padding:5px;border-radius:6px;cursor:pointer;font-size:11px;}
 
 /* Jornada RG */
 #screen-rgjourney{padding:16px;overflow-y:auto;background:#08111E;}
@@ -130,7 +140,9 @@ body.screen-graph #iped-filter-group{display:flex !important;}
 .det-card{background:#0C1829;border:1px solid #1A3050;border-radius:8px;padding:12px;margin-bottom:12px;}
 .det-card-title{font-size:12px;color:#D0E8FF;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;}
 .det-incident-banner{background:#2A0F0F;border:1px solid #FF4444;border-radius:6px;padding:10px 12px;font-size:11.5px;color:#FFB0A8;line-height:1.5;margin-bottom:12px;}
-.det-chart-svg{width:100%;height:150px;overflow:visible;}
+.det-chart-svg{width:100%;height:180px;overflow:visible;}
+.det-chart-summary{font-size:11px;color:#8ABEDF;margin:2px 0 8px 0;}
+.det-chart-summary b{color:#FF9090;}
 .det-alarm-row{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid #0A1422;font-size:11px;color:#A0C8E4;}
 .det-alarm-badge{flex-shrink:0;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;background:#FF444422;color:#FF4444;border:1px solid #FF4444;}
 .det-stat-row{display:flex;justify-content:space-between;font-size:11.5px;color:#8ABEDF;padding:3px 0;}
@@ -162,6 +174,16 @@ body.screen-graph #iped-filter-group{display:flex !important;}
 .ins-row-label{color:#A0C8E4;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ins-bar-wrap{width:80px;height:5px;background:#0A1422;border-radius:2px;flex-shrink:0;}
 .ins-bar-fill{height:100%;border-radius:2px;}
+
+/* ── Glossário ── */
+#glossario-content{padding:16px;max-width:900px;margin:0 auto;overflow-y:auto;height:100%;}
+.gl-search{width:100%;background:#0C1829;border:1px solid #1A3050;border-radius:7px;color:#D0E8FF;padding:9px 12px;font-size:13px;font-family:Arial,sans-serif;box-sizing:border-box;margin-bottom:14px;}
+.gl-group-title{font-size:11px;color:#8ABEDF;text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:16px 0 6px;}
+.gl-item{background:#0C1829;border:1px solid #1A3050;border-radius:7px;padding:10px 14px;margin-bottom:8px;}
+.gl-item.gl-hidden{display:none;}
+.gl-term{font-size:13px;font-weight:700;color:#F0F8FF;}
+.gl-term .gl-sigla{color:#E87000;}
+.gl-def{font-size:12.5px;color:#A0C8E4;line-height:1.55;margin-top:4px;}
 .ins-val{font-size:13px;font-weight:700;flex-shrink:0;min-width:44px;text-align:right;}
 
 /* ── PERSONAS SCREEN ── */
@@ -255,14 +277,27 @@ body:not(.screen-graph) #metrics { display:none !important; }
 body.screen-alerts #left-col, body.screen-alerts #cat-sidebar,
 body.screen-assistant #left-col, body.screen-assistant #cat-sidebar,
 body.screen-personas #left-col,
-body.screen-quality #left-col, body.screen-quality #cat-sidebar,
 body.screen-overview #left-col, body.screen-overview #cat-sidebar,
-body.screen-restricted #left-col, body.screen-restricted #cat-sidebar { display:none !important; }
-body.screen-map #left-col, body.screen-map #cat-sidebar { display:none !important; }
+body.screen-glossario #left-col, body.screen-glossario #cat-sidebar,
+body.screen-restricted #left-col, body.screen-restricted #cat-sidebar,
+body.screen-deteccao #left-col, body.screen-deteccao #cat-sidebar { display:none !important; }
+body.screen-map #cat-sidebar { display:none !important; }
 body.screen-rgjourney #cat-sidebar { display:none !important; }
-body.screen-rede #cat-sidebar, body.screen-rede #left-col { display:none !important; }
-body.screen-outliers #cat-sidebar, body.screen-outliers #left-col { display:none !important; }
-body.screen-deteccao #cat-sidebar, body.screen-deteccao #left-col { display:none !important; }
+body.screen-rede #cat-sidebar { display:none !important; }
+body.screen-outliers #cat-sidebar { display:none !important; }
+body.screen-quality #cat-sidebar { display:none !important; }
+
+/* filtros compartilhados — visíveis só nas telas onde fazem sentido */
+#people-mode-group, #segmento-filter-group, #cluster-filter-group, #dia-periodo-filter-group { display:none; }
+body.screen-graph #people-mode-group, body.screen-map #people-mode-group, body.screen-quality #people-mode-group,
+body.screen-graph #segmento-filter-group, body.screen-map #segmento-filter-group, body.screen-quality #segmento-filter-group,
+body.screen-graph #cluster-filter-group, body.screen-map #cluster-filter-group, body.screen-quality #cluster-filter-group,
+body.screen-graph #dia-periodo-filter-group, body.screen-map #dia-periodo-filter-group, body.screen-quality #dia-periodo-filter-group,
+body.screen-rede #dia-periodo-filter-group, body.screen-outliers #dia-periodo-filter-group { display:flex !important; }
+.people-mode-btn.active{background:#E87000;border-color:#E87000;color:#fff;}
+body.screen-rede #periodo-filter-sub, body.screen-outliers #periodo-filter-sub{display:none;}
+.cl-item{display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;}
+.cl-item input{cursor:pointer;flex-shrink:0;}
 
 /* ── RESPONSIVIDADE ── */
 .sidebar-toggle-btn{display:none;}
@@ -327,6 +362,7 @@ body.screen-deteccao #cat-sidebar, body.screen-deteccao #left-col { display:none
   <div style="flex:1;display:flex;justify-content:center;min-width:0;">
     <div id="nav-tabs">
       <button class="nav-btn active" data-screen="overview">&#128202; Visão Geral</button>
+      <button class="nav-btn" data-screen="glossario">&#128214; Glossário</button>
       <button class="nav-btn" data-screen="graph">&#9672; Dígrafo</button>
       <button class="nav-btn" data-screen="map">&#127758; Mapa</button>
       <button class="nav-btn" data-screen="rgjourney">&#128257; Jornada RG</button>
@@ -351,6 +387,47 @@ body.screen-deteccao #cat-sidebar, body.screen-deteccao #left-col { display:none
 <div id="main">
   <div id="left-col">
     <div id="filterbar">
+      <div class="fb-group" id="people-mode-group">
+        <span class="fb-label">Dispositivos / Pessoas</span>
+        <div style="display:flex;gap:4px;">
+          <button class="fbtn people-mode-btn active" data-mode="devices" onclick="_setPeopleMode('devices')" style="flex:1;text-align:center;">Dispositivos</button>
+          <button class="fbtn people-mode-btn" data-mode="pessoas" onclick="_setPeopleMode('pessoas')" style="flex:1;text-align:center;">Pessoas</button>
+        </div>
+        <button class="fbtn" onclick="_configurePeopleParams()" style="text-align:center;font-size:10.5px;" title="pessoas = dispositivos × market share × %não-IoT × penetração">&#9881; Configurar m / c / p</button>
+        <div id="people-params-summary" style="font-size:10px;color:#567898;"></div>
+      </div>
+      <div class="fb-group" id="segmento-filter-group">
+        <span class="fb-label">Segmento</span>
+        <button class="fbtn active" data-seg="all" onclick="_setSegmento('all')">Todos</button>
+        <button class="fbtn" data-seg="pos_pago" onclick="_setSegmento('pos_pago')">Pós-pago</button>
+        <button class="fbtn" data-seg="controle" onclick="_setSegmento('controle')">Controle</button>
+        <button class="fbtn" data-seg="pre_pago" onclick="_setSegmento('pre_pago')">Pré-pago</button>
+      </div>
+      <div class="fb-group" id="dia-periodo-filter-group">
+        <span class="fb-label">Dia</span>
+        <select id="dia-filter-select" class="sva-num-input" style="width:100%" onchange="_setDia(this.value)"></select>
+        <div id="periodo-filter-sub">
+          <span class="fb-label" style="margin-top:4px;">Período</span>
+          <select id="periodo-filter-select" class="sva-num-input" style="width:100%" onchange="_setPeriodo(this.value)">
+            <option value="all">Todos</option>
+            <option value="MADRUGADA">Madrugada</option>
+            <option value="MANHA">Manhã</option>
+            <option value="TARDE">Tarde</option>
+            <option value="NOITE">Noite</option>
+          </select>
+        </div>
+      </div>
+      <div class="fb-group" id="cluster-filter-group">
+        <span class="fb-label">Cluster</span>
+        <div id="cluster-filter-list" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;font-size:11px;color:#A0C8E4;"></div>
+      </div>
+      <div class="fb-group" id="node-filter-group">
+        <span class="fb-label">Nó (cluster) · nº de pessoas</span>
+        <div style="display:flex;gap:4px">
+          <input type="number" id="node-min-input" class="sva-num-input" placeholder="mín" min="0" style="width:100%">
+          <input type="number" id="node-max-input" class="sva-num-input" placeholder="máx" min="0" style="width:100%">
+        </div>
+      </div>
       <div class="fb-group">
         <span class="fb-label">Persona</span>
         <div id="persona-filter-buttons"></div>
@@ -374,9 +451,14 @@ body.screen-deteccao #cat-sidebar, body.screen-deteccao #left-col { display:none
   <div id="center">
     <div class="screen active" id="screen-overview"><div id="overview-content"></div></div>
 
+    <div class="screen" id="screen-glossario"><div id="glossario-content"></div></div>
+
     <div class="screen" id="screen-graph">
       <svg id="graph-svg"></svg>
       <div class="tooltip" id="tooltip"></div>
+      <div class="tooltip" id="edge-tooltip"></div>
+      <div class="sigma-chart-panel"><div class="sigma-chart-title">&#963; Topológico (evolução diária)</div><div id="sigma-chart-graph"></div></div>
+      <div class="pb-box"><div class="pb-title">Construtor de caminho</div><div id="path-builder-content-graph"></div><button class="pb-clear-btn" onclick="_pbClear('graph')">Limpar caminho</button></div>
     </div>
 
     <div class="screen" id="screen-map">
