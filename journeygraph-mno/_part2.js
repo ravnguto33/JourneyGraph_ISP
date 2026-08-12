@@ -168,7 +168,9 @@ Object.assign(S, { segmento:'all', clusters:null, dia:'all', periodo:'all',
 
 function peopleVal(n){
   if(S.peopleMode!=='pessoas') return n;
-  return n * S.peopleParams.m * S.peopleParams.c * S.peopleParams.p;
+  var pp = S.peopleParams;
+  var computed = ((n * pp.c) / pp.m) / pp.p;
+  return Math.max(n, computed); // pessoas nunca fica abaixo de dispositivos
 }
 function fmtPeople(n){ return fmtN(Math.round(peopleVal(n))); }
 
@@ -415,7 +417,7 @@ var GLOSSARIO = [
   {grupo:'Segmentação', termo:'Segmento', sigla:null, def:'Pós-pago, controle ou pré-pago — classificação comercial do assinante. Campo sintético (não vem do CDR real), gerado com pesos determinísticos por persona para viabilizar o filtro de Segmento.'},
   {grupo:'Segmentação', termo:'Persona', sigla:null, def:'Perfil comportamental do assinante (9 no total: '+RAW.personas.map(function(p){return p.id+' '+p.nome;}).join(', ')+') curado a partir de padrões reais de uso de rede — não pesquisa de mercado.'},
   {grupo:'Dados e escala', termo:'CDR', sigla:'Call Detail Record', def:'Registro detalhado de chamada/sessão (voz, dados, SMS) — a unidade bruta de dado de onde todas as métricas deste app são derivadas (sinteticamente, nesta demonstração).'},
-  {grupo:'Dados e escala', termo:'Dispositivos × Pessoas', sigla:null, def:'Os números brutos do app (n_usuarios) representam dispositivos/linhas observadas. Para estimar pessoas reais, aplique pessoas = dispositivos × m% (market share da operadora) × c% (parcela de dispositivos não-IoT) × p% (penetração de celular na população) — configurável no toggle Dispositivos/Pessoas dos Filtros.'}
+  {grupo:'Dados e escala', termo:'Dispositivos × Pessoas', sigla:null, def:'Os números brutos do app (n_usuarios) representam dispositivos/linhas observadas. Para estimar pessoas reais, aplique pessoas = ((dispositivos × c%) / m%) / p%, onde m% = market share da operadora, c% = parcela de dispositivos não-IoT, p% = penetração de celular na população — configurável no toggle Dispositivos/Pessoas dos Filtros. O valor nunca fica abaixo da contagem de dispositivos.'}
 ];
 function renderGlossario(){
   var grupos = {};
@@ -1101,16 +1103,18 @@ function renderRGJourney(){
   svg.call(d3.zoom().scaleExtent([0.5, 3]).on('zoom', function(ev){ g.attr('transform', ev.transform); }));
   svg = g; // daqui pra baixo, todo append() vai dentro do grupo zoomável
 
-  var cx=280, cy=230, R=170;
-  var nodeById = {};
-  data.nodes.forEach(function(n,i){
-    var ang = -Math.PI/2 + i*(2*Math.PI/RG_ORDER.length);
-    nodeById[n.id] = { id:n.id, n:n.n, x: cx+R*Math.cos(ang), y: cy+R*Math.sin(ang) };
+  // Mesmo layout de força do Dígrafo por clusters (d3.forceSimulation +
+  // drag que só move o nó solto), em vez do círculo fixo anterior.
+  var W=560, H=480, cx=W/2, cy=H/2, R=150;
+  var nodesArr = data.nodes.map(function(n,i){
+    var ang = -Math.PI/2 + i*(2*Math.PI/data.nodes.length);
+    return { id:n.id, n:n.n, x: cx+R*Math.cos(ang), y: cy+R*Math.sin(ang) };
   });
+  var edgesArr = data.edges.map(function(e){ return { source:e.source, target:e.target, n:e.n }; });
 
-  var maxN = d3.max(data.nodes, function(n){return n.n;}) || 1;
+  var maxN = d3.max(nodesArr, function(n){return n.n;}) || 1;
   var rNode = d3.scaleSqrt().domain([0,maxN]).range([16,40]);
-  var maxE = d3.max(data.edges, function(e){return e.n;}) || 1;
+  var maxE = d3.max(edgesArr, function(e){return e.n;}) || 1;
   var wEdge = d3.scaleLinear().domain([0,maxE]).range([1,7]);
 
   svg.append('defs').append('marker')
@@ -1126,82 +1130,80 @@ function renderRGJourney(){
     var nx=-dy/dist*offset, ny=dx/dist*offset;
     return 'M'+a.x+','+a.y+' Q'+(mx+nx)+','+(my+ny)+' '+b.x+','+b.y;
   }
-  data.edges.forEach(function(e){
-    var a = nodeById[e.source], b = nodeById[e.target];
-    if(!a || !b) return;
-    var pathD = _rgjEdgeD(a, b);
-    var ratio = e.n/maxE;
-    var baseOpacity = 0.25+ratio*0.55;
-    var path = svg.append('path').attr('d', pathD).attr('fill','none')
-      .attr('class','rgj-edge')
-      .attr('data-source', e.source).attr('data-target', e.target)
-      .attr('stroke', RG_COLOR[e.source]).attr('stroke-width', wEdge(e.n))
-      .attr('stroke-opacity', baseOpacity).property('_baseOpacity', baseOpacity)
-      .attr('marker-end','url(#rgj-arrow)')
-      .style('cursor','pointer')
-      .on('click', function(){ _rgjShowEdgeInfo(e, data.edges); });
-    path.append('title').text(RG_LABEL[e.source]+' → '+RG_LABEL[e.target]+': '+fmtN(e.n)+' transições observadas');
-  });
+  function _rgjIdOf(x){ return (x && typeof x==='object') ? x.id : x; }
 
-  var nodeSel = svg.selectAll('circle.rgj-node').data(data.nodes).enter().append('circle')
+  var maxERatio = maxE || 1;
+  var link = svg.selectAll('path.rgj-edge').data(edgesArr).enter().append('path')
+    .attr('class','rgj-edge')
+    .attr('fill','none')
+    .attr('stroke', function(e){ return RG_COLOR[_rgjIdOf(e.source)]; })
+    .attr('stroke-width', function(e){ return wEdge(e.n); })
+    .attr('stroke-opacity', function(e){ return 0.25 + (e.n/maxERatio)*0.55; })
+    .property('_baseOpacity', function(e){ return 0.25 + (e.n/maxERatio)*0.55; })
+    .attr('marker-end','url(#rgj-arrow)')
+    .style('cursor','pointer')
+    .on('click', function(ev,e){ _rgjShowEdgeInfo(e, edgesArr); });
+  link.append('title').text(function(e){ return RG_LABEL[_rgjIdOf(e.source)]+' → '+RG_LABEL[_rgjIdOf(e.target)]+': '+fmtN(e.n)+' transições observadas'; });
+
+  var node = svg.selectAll('circle.rgj-node').data(nodesArr).enter().append('circle')
     .attr('class','rgj-node')
-    .attr('cx', function(n){return nodeById[n.id].x;})
-    .attr('cy', function(n){return nodeById[n.id].y;})
     .attr('r', function(n){return rNode(n.n);})
     .attr('fill', function(n){return RG_COLOR[n.id];})
     .attr('stroke','#050C16').attr('stroke-width',2)
-    .style('cursor','grab')
+    .style('cursor','pointer')
     .on('click', function(ev, n){
-      _rgjShowNodeInfo(n, data.nodes);
+      _rgjShowNodeInfo(n, nodesArr);
       _pbNodeClicked('rgjourney', n.id);
     })
     .on('mouseover', function(ev, n){
-      svg.selectAll('circle.rgj-node').attr('opacity', function(m){ return (m.id===n.id) ? 1 : 0.25; });
-      svg.selectAll('path.rgj-edge').each(function(){
-        var el = d3.select(this);
-        var conectada = el.attr('data-source')===n.id || el.attr('data-target')===n.id;
-        el.attr('stroke-opacity', conectada ? Math.max(el.property('_baseOpacity'), 0.85) : 0.06);
+      node.attr('opacity', function(m){ return (m.id===n.id) ? 1 : 0.25; });
+      link.attr('stroke-opacity', function(e){
+        var conectada = _rgjIdOf(e.source)===n.id || _rgjIdOf(e.target)===n.id;
+        return conectada ? Math.max(d3.select(this).property('_baseOpacity'), 0.85) : 0.06;
       });
-      svg.selectAll('text.rgj-label').attr('opacity', function(m){ return (m.id===n.id) ? 1 : 0.35; });
+      label.attr('opacity', function(m){ return (m.id===n.id) ? 1 : 0.35; });
     })
     .on('mouseout', function(){
-      svg.selectAll('circle.rgj-node').attr('opacity', 1);
-      svg.selectAll('path.rgj-edge').each(function(){
-        var el = d3.select(this);
-        el.attr('stroke-opacity', el.property('_baseOpacity'));
-      });
-      svg.selectAll('text.rgj-label').attr('opacity', 1);
+      node.attr('opacity', 1);
+      link.attr('stroke-opacity', function(e){ return d3.select(this).property('_baseOpacity'); });
+      label.attr('opacity', 1);
     });
-  nodeSel.append('title').text(function(n){return RG_LABEL[n.id]+': '+fmtN(n.n)+' sessões observadas';});
+  node.append('title').text(function(n){return RG_LABEL[n.id]+': '+fmtN(n.n)+' sessões observadas';});
 
-  var labelSel = svg.selectAll('text.rgj-label').data(data.nodes).enter().append('text')
+  var label = svg.selectAll('text.rgj-label').data(nodesArr).enter().append('text')
     .attr('class','rgj-label')
-    .attr('x', function(n){return nodeById[n.id].x;})
-    .attr('y', function(n){return nodeById[n.id].y - rNode(n.n) - 8;})
     .attr('text-anchor','middle').attr('font-size',12).attr('font-weight',700)
-    .attr('fill','#D0E8FF').text(function(n){return RG_LABEL[n.id];});
+    .attr('fill','#D0E8FF').style('pointer-events','none').text(function(n){return RG_LABEL[n.id];});
 
-  // Nós têm posição fixa (layout circular), sem simulação de força — mas
-  // continuavam travados (sem d3.drag) diferente do Dígrafo principal.
-  // Arrastar move só o nó solto + reposiciona label e arestas conectadas,
-  // mesmo padrão do fix de drag do Dígrafo (sem reaquecer/mexer no resto).
-  nodeSel.call(d3.drag()
-    .on('start', function(){ d3.select(this).style('cursor','grabbing'); })
+  var degree = {};
+  edgesArr.forEach(function(e){ degree[_rgjIdOf(e.source)]=(degree[_rgjIdOf(e.source)]||0)+1; degree[_rgjIdOf(e.target)]=(degree[_rgjIdOf(e.target)]||0)+1; });
+
+  var rgjSim = d3.forceSimulation(nodesArr)
+    .force('link', d3.forceLink(edgesArr).id(function(n){return n.id;}).distance(130).strength(0.35))
+    .force('charge', d3.forceManyBody().strength(-260))
+    .force('center', d3.forceCenter(cx, cy))
+    .force('collide', d3.forceCollide().radius(function(n){return rNode(n.n)+14;}))
+    .force('anchorX', d3.forceX(cx).strength(function(n){ return degree[n.id] ? 0 : 0.10; }))
+    .force('anchorY', d3.forceY(cy).strength(function(n){ return degree[n.id] ? 0 : 0.10; }))
+    .on('tick', function(){
+      link.attr('d', function(e){ return _rgjEdgeD(e.source, e.target); });
+      node.attr('cx', function(n){return n.x;}).attr('cy', function(n){return n.y;});
+      label.attr('x', function(n){return n.x;}).attr('y', function(n){return n.y - rNode(n.n) - 8;});
+    });
+
+  // Arrastar move só o nó solto (não reaquece a simulação inteira),
+  // mesmo padrão do Dígrafo por clusters.
+  node.call(d3.drag()
+    .on('start', function(ev,n){ n.fx=n.x; n.fy=n.y; })
     .on('drag', function(ev, n){
-      var p = nodeById[n.id];
-      p.x = ev.x; p.y = ev.y;
-      d3.select(this).attr('cx', p.x).attr('cy', p.y);
-      labelSel.filter(function(m){return m.id===n.id;})
-        .attr('x', p.x).attr('y', p.y - rNode(n.n) - 8);
-      svg.selectAll('path.rgj-edge').each(function(){
-        var el = d3.select(this);
-        var src = el.attr('data-source'), tgt = el.attr('data-target');
-        if(src===n.id || tgt===n.id){
-          el.attr('d', _rgjEdgeD(nodeById[src], nodeById[tgt]));
-        }
-      });
+      n.fx = ev.x; n.fy = ev.y;
+      n.x = ev.x; n.y = ev.y;
+      d3.select(this).attr('cx', n.x).attr('cy', n.y);
+      label.filter(function(m){return m.id===n.id;}).attr('x', n.x).attr('y', n.y - rNode(n.n) - 8);
+      link.filter(function(e){ return e.source===n || e.target===n; })
+        .attr('d', function(e){ return _rgjEdgeD(e.source, e.target); });
     })
-    .on('end', function(){ d3.select(this).style('cursor','grab'); }));
+    .on('end', function(){}));
 
   // Painel lateral: legenda + ranking + nota metodológica
   var side = '<div class="rgj-card"><div class="ins-title" style="margin-bottom:8px">Nó selecionado</div><div id="rgj-node-info"><div class="pb-hint">Clique em um nó para ver detalhes.</div></div></div>';
@@ -1251,11 +1253,18 @@ function _rgjShowNodeInfo(n, allNodes){
 function _rgjShowEdgeInfo(e, allEdges){
   var el = document.getElementById('rgj-edge-info');
   if(!el) return;
-  var totalDoNo = d3.sum(allEdges.filter(function(x){return x.source===e.source;}), function(x){ return x.n; }) || 1;
+  // depois que a simulação inicia, d3.forceLink substitui e.source/e.target
+  // (strings) por referências ao objeto do nó — normaliza para o id aqui
+  var srcId = (e.source && typeof e.source==='object') ? e.source.id : e.source;
+  var tgtId = (e.target && typeof e.target==='object') ? e.target.id : e.target;
+  var totalDoNo = d3.sum(allEdges.filter(function(x){
+    var xSrc = (x.source && typeof x.source==='object') ? x.source.id : x.source;
+    return xSrc===srcId;
+  }), function(x){ return x.n; }) || 1;
   var pct = 100*e.n/totalDoNo;
-  el.innerHTML = '<div class="pb-step"><b>'+RG_LABEL[e.source]+' &#8594; '+RG_LABEL[e.target]+'</b></div>'+
+  el.innerHTML = '<div class="pb-step"><b>'+RG_LABEL[srcId]+' &#8594; '+RG_LABEL[tgtId]+'</b></div>'+
     '<div class="pb-step">'+fmtN(e.n)+' transições observadas</div>'+
-    '<div class="pb-step">'+pct.toFixed(1)+'% entre todas as transições a partir de '+RG_LABEL[e.source]+'</div>';
+    '<div class="pb-step">'+pct.toFixed(1)+'% entre todas as transições a partir de '+RG_LABEL[srcId]+'</div>';
 }
 
 /* Sigma topológico para Jornada RG — não há série diária real para este
@@ -1970,16 +1979,7 @@ function _personasPieSvg(){
   return svg;
 }
 function renderPersonas(){
-  var html = '<div class="pc" style="grid-column:1/-1;display:flex;align-items:center;gap:20px;flex-wrap:wrap;">'+
-    _personasPieSvg()+
-    '<div style="display:flex;flex-wrap:wrap;gap:10px;flex:1;min-width:220px;">'+
-    RAW.personas.map(function(p){
-      return '<span style="font-size:11.5px;color:#D0E8FF;display:inline-flex;align-items:center;gap:5px;background:#0A1422;border:1px solid #1A3050;border-radius:14px;padding:4px 10px;">'+
-        '<span style="font-size:14px;">'+PERSONA_ICON[p.id]+'</span>'+
-        '<span style="width:8px;height:8px;border-radius:50%;background:#'+p.cor_hex+';display:inline-block;"></span>'+
-        p.id+' '+p.nome+' — <b>'+p.pct+'%</b></span>';
-    }).join('')+
-    '</div></div>';
+  var html = '';
   RAW.personas.forEach(function(p){
     var q = RAW.quality_by_persona.filter(function(x){return x.persona_id===p.id;})[0] || {};
     var vamp = RAW.vamping.by_persona.filter(function(x){return x.persona_id===p.id;})[0];
@@ -1994,6 +1994,7 @@ function renderPersonas(){
       '<div style="margin-top:8px;font-size:11px;color:#567898">Qualidade esperada: '+p.qualidade_rede_esperada+'</div>'+
       '</div>';
   });
+  html += '<div class="pc" style="display:flex;align-items:center;justify-content:center;">'+_personasPieSvg()+'</div>';
   document.getElementById('personas-grid').innerHTML = html;
 }
 

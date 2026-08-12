@@ -296,6 +296,10 @@ body.screen-graph #dia-periodo-filter-group, body.screen-map #dia-periodo-filter
 body.screen-rede #dia-periodo-filter-group, body.screen-outliers #dia-periodo-filter-group { display:flex !important; }
 .people-mode-btn.active{background:#E87000;border-color:#E87000;color:#fff;}
 body.screen-rede #periodo-filter-sub, body.screen-outliers #periodo-filter-sub{display:none;}
+/* Persona não tem efeito em Rede/Outliers (dado de rede, sem dimensão de persona)
+   nem em Qualidade (a tela já mostra todas as personas lado a lado) */
+#persona-filter-group{display:none;}
+body.screen-graph #persona-filter-group, body.screen-map #persona-filter-group, body.screen-rgjourney #persona-filter-group{display:flex !important;}
 .cl-item{display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;}
 .cl-item input{cursor:pointer;flex-shrink:0;}
 
@@ -362,7 +366,6 @@ body.screen-rede #periodo-filter-sub, body.screen-outliers #periodo-filter-sub{d
   <div style="flex:1;display:flex;justify-content:center;min-width:0;">
     <div id="nav-tabs">
       <button class="nav-btn active" data-screen="overview">&#128202; Visão Geral</button>
-      <button class="nav-btn" data-screen="glossario">&#128214; Glossário</button>
       <button class="nav-btn" data-screen="graph">&#9672; Dígrafo</button>
       <button class="nav-btn" data-screen="map">&#127758; Mapa</button>
       <button class="nav-btn" data-screen="rgjourney">&#128257; Jornada RG</button>
@@ -374,6 +377,7 @@ body.screen-rede #periodo-filter-sub, body.screen-outliers #periodo-filter-sub{d
       <button class="nav-btn" data-screen="alerts">&#9888; Alertas</button>
       <button class="nav-btn" data-screen="assistant">&#129302; Assistente</button>
       <button class="nav-btn" data-screen="restricted" style="color:#FF6B5B;" title="Consulta individual de assinante identificado — acesso restrito">&#128274; Individual</button>
+      <button class="nav-btn" data-screen="glossario">&#128214; Glossário</button>
     </div>
   </div>
   <button class="nav-btn sidebar-toggle-btn" id="cat-sidebar-toggle-btn" onclick="_toggleSidebar('cat-sidebar')" title="Personas" style="margin-left:auto;flex-shrink:0;">&#9776;</button>
@@ -393,7 +397,7 @@ body.screen-rede #periodo-filter-sub, body.screen-outliers #periodo-filter-sub{d
           <button class="fbtn people-mode-btn active" data-mode="devices" onclick="_setPeopleMode('devices')" style="flex:1;text-align:center;">Dispositivos</button>
           <button class="fbtn people-mode-btn" data-mode="pessoas" onclick="_setPeopleMode('pessoas')" style="flex:1;text-align:center;">Pessoas</button>
         </div>
-        <button class="fbtn" onclick="_configurePeopleParams()" style="text-align:center;font-size:10.5px;" title="pessoas = dispositivos × market share × %não-IoT × penetração">&#9881; Configurar m / c / p</button>
+        <button class="fbtn" onclick="_configurePeopleParams()" style="text-align:center;font-size:10.5px;" title="pessoas = ((dispositivos × %não-IoT) / market share) / penetração — nunca abaixo de dispositivos">&#9881; Configurar m / c / p</button>
         <div id="people-params-summary" style="font-size:10px;color:#567898;"></div>
       </div>
       <div class="fb-group" id="segmento-filter-group">
@@ -428,7 +432,7 @@ body.screen-rede #periodo-filter-sub, body.screen-outliers #periodo-filter-sub{d
           <input type="number" id="node-max-input" class="sva-num-input" placeholder="máx" min="0" style="width:100%">
         </div>
       </div>
-      <div class="fb-group">
+      <div class="fb-group" id="persona-filter-group">
         <span class="fb-label">Persona</span>
         <div id="persona-filter-buttons"></div>
       </div>
@@ -515,8 +519,8 @@ body.screen-rede #periodo-filter-sub, body.screen-outliers #periodo-filter-sub{d
         <button class="alerts-view-tab" onclick="_alertsSetView('rede')">Por Rede (priorizado)</button>
       </div>
       <div class="alerts-layout">
-        <div id="alerts-content" class="alerts-col-main"></div>
-        <div id="alerts-side" class="alerts-col-side"></div>
+        <div id="alerts-content" class="alerts-col-side"></div>
+        <div id="alerts-side" class="alerts-col-main"></div>
       </div>
     </div>
 
